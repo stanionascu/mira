@@ -1391,6 +1391,17 @@ class ReviewEngine:
                         exc,
                     )
                     return [], [], ""
+                except Exception as exc:
+                    # A chunk's LLM call failing (e.g. sustained 429s on a
+                    # rate-limited endpoint after retries) must not discard
+                    # the other chunks' findings — skip like a parse failure.
+                    logger.warning(
+                        "Chunk %d/%d failed, skipping: %s",
+                        idx + 1,
+                        len(chunks),
+                        exc,
+                    )
+                    return [], [], ""
 
         review_task = _asyncio.gather(*[_review_chunk(i, c) for i, c in enumerate(chunks)])
         # Per-chunk executors (fresh per call) so each chunk gets its own

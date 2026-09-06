@@ -312,6 +312,22 @@ class TestReviewEngine:
         assert result.reviewed_files > 0
         # The pipeline completed without raising
 
+        # Same fail-open behavior when a chunk's LLM call itself fails
+        # (e.g. sustained 429s on a rate-limited endpoint after retries):
+        # the chunk is skipped, other chunks' findings survive.
+        llm2 = MagicMock(spec=LLMProvider)
+        llm2.count_tokens = MagicMock(return_value=50)
+        llm2.walkthrough = AsyncMock(
+            return_value=json.dumps({"summary": "walkthrough", "change_groups": []})
+        )
+        llm2.review = AsyncMock(side_effect=[good_response, RuntimeError("LLM down")])
+        llm2.complete = AsyncMock(return_value=good_response)
+        llm2.usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+        engine2 = ReviewEngine(config=config, llm=llm2)
+        result2 = await engine2.review_diff(sample_diff_text)
+        assert result2.reviewed_files > 0
+
     @pytest.mark.asyncio
     async def test_max_diff_size_truncates(self, mock_llm: LLMProvider, sample_diff_text: str):
         """Fix 4: Diffs exceeding max_diff_size are truncated."""

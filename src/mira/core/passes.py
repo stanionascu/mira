@@ -16,7 +16,7 @@ from mira.config import load_config
 from mira.dashboard.models_config import llm_config_for
 from mira.exceptions import ResponseParseError
 from mira.llm import create_llm
-from mira.llm.base import LLMProviderProtocol
+from mira.llm.base import LLMProviderProtocol, _rate_limit_hint
 from mira.llm.prompts.review import (
     build_dependency_review_prompt,
     build_security_review_prompt,
@@ -259,6 +259,15 @@ async def _security_scan_once(
                 "Security pass on security tier failed (%s); retrying on review LLM",
                 exc,
             )
+            # When the tier failure was rate limiting, give the endpoint a
+            # beat before the fallback retry instead of re-hammering it.
+            # Capped well below retry_max_wait so one slow lane can't stall
+            # the review; no hint means no delay (existing tests stay fast).
+            hint = _rate_limit_hint(exc)
+            if hint is not None:
+                delay = min(hint, 10.0)
+                logger.info("Security pass rate-limited; delaying fallback %.0fs", delay)
+                await asyncio.sleep(delay)
             try:
                 raw = await fallback_llm.complete_with_tools(
                     messages=messages,
@@ -331,6 +340,11 @@ async def dependency_review_pass(
                 "Dependency pass on indexing tier failed (%s); retrying on review LLM",
                 exc,
             )
+            hint = _rate_limit_hint(exc)
+            if hint is not None:
+                delay = min(hint, 10.0)
+                logger.info("Dependency pass rate-limited; delaying fallback %.0fs", delay)
+                await asyncio.sleep(delay)
             try:
                 raw = await llm.complete_with_tools(
                     messages=messages,
