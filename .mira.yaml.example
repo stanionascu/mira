@@ -20,11 +20,22 @@ llm:
   # aws_profile: "my-profile"  # optional, uses default AWS credential chain if omitted
 
   # Retry and timeout configuration (defaults: 3 attempts, 120s timeout, 2-30s backoff)
-  # Increase for flex-tier models or proxied endpoints under load
+  # Increase for flex-tier models or proxied endpoints under load.
+  # On 429 (rate limit) responses Mira honors the server's Retry-After header
+  # (capped at retry_max_wait) on top of this backoff.
   # max_retries: 3
   # request_timeout: 120
   # retry_min_wait: 2
   # retry_max_wait: 30
+
+  # ── Mistral configuration (uncomment to use) ──
+  # base_url: "https://api.mistral.ai/v1"
+  # api_key_env: "MISTRAL_API_KEY"
+  # model: "mistral/mistral-medium-3-5"
+  # fallback_model: "mistral/mistral-small-4"
+  # Thinking levels map to Mistral's reasoning_effort (high/xhigh/max = full
+  # thinking, low/medium = minimal); off sends no reasoning parameter.
+  # review_reasoning_effort: "high"
 
 filter:
   # Minimum confidence threshold (0.0 - 1.0)
