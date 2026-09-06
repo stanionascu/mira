@@ -439,6 +439,25 @@ class TestComplete:
             # Retriable: 3 attempts
             assert mock_client.post.call_count == 3
 
+        # A Retry-After header is captured on the error so the retry wait
+        # can honor the server's backoff (still 3 attempts here — the
+        # zero-wait config caps the hint at 0 and keeps this test fast).
+        hinted = _mock_httpx_response({}, status_code=429)
+        hinted.headers = {"retry-after": "45", "x-ratelimit-remaining": "0"}
+        with patch("mira.llm.provider.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.post = AsyncMock(return_value=hinted)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            with pytest.raises(LLMError) as exc_info:
+                await provider.complete([{"role": "user", "content": "hi"}])
+
+            assert mock_client.post.call_count == 3
+            inner = exc_info.value.__cause__
+            assert getattr(inner, "retry_after_hint", None) == 45.0
+
 
 class TestCountTokens:
     def test_heuristic_count(self):

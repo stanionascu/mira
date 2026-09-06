@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 import os
+import random
+from datetime import UTC, datetime
 from typing import ClassVar, Protocol, runtime_checkable
 
 import httpx
@@ -119,6 +121,52 @@ def _retriable(exception: BaseException) -> bool:
     )
 
 
+# Accepted HTTP-date shapes for Retry-After (RFC 7231 §7.1.3 prefers the
+# IMF-fixdate form; the obsolete two-digit-year variants are vanishingly
+# rare from real gateways and fall back to exponential backoff).
+_RETRY_AFTER_DATE_FORMATS = ("%a, %d %b %Y %H:%M:%S GMT", "%a, %d %b %Y %H:%M:%S UTC")
+
+
+def _parse_retry_after(value: str | None) -> float | None:
+    """Parse a ``Retry-After`` header value into seconds, or None.
+
+    Accepts delay-seconds (``"120"``) and HTTP-dates. Returns None for
+    missing, malformed, or non-positive values — callers fall back to the
+    configured exponential backoff.
+    """
+    if not value:
+        return None
+    value = value.strip()
+    if value.isdigit():
+        seconds = float(value)
+        return seconds if seconds > 0 else None
+    for fmt in _RETRY_AFTER_DATE_FORMATS:
+        try:
+            retry_at = datetime.strptime(value, fmt).replace(tzinfo=UTC)
+            break
+        except ValueError:
+            continue
+    else:
+        return None
+    seconds = (retry_at - datetime.now(UTC)).total_seconds()
+    return seconds if seconds > 0 else None
+
+
+def _rate_limit_hint(exception: BaseException) -> float | None:
+    """Server-provided retry delay in seconds, following ``__cause__`` chains.
+
+    ``_handle_error`` attaches ``retry_after_hint`` to the 429 ``LLMError``;
+    public API wrappers re-raise chained errors, so walk the chain.
+    """
+    seen: set[int] = set()
+    current: BaseException | None = exception
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        hint = getattr(current, "retry_after_hint", None)
+        if isinstance(hint, (int, float)) and hint > 0:
+            return float(hint)
+        current = current.__cause__ or current.__context__
+    return None
 # ── Shared base for OpenAI-compatible providers ─────────────────────
 
 
@@ -145,13 +193,35 @@ class OpenAICompatibleProvider:
 
         # Apply retry decorator imperatively so it reads config values
         # (max_retries, retry_min_wait, retry_max_wait) at instance time.
+        base_wait = wait_exponential(
+            multiplier=1,
+            min=config.retry_min_wait,
+            max=config.retry_max_wait,
+        )
+
+        def _wait(retry_state) -> float:
+            """Exponential backoff, honoring the server's Retry-After hint.
+
+            The exponential wait is the floor; a parsed ``Retry-After`` delay
+            (capped at ``retry_max_wait``) extends it so concurrent lanes back
+            off together instead of re-hammering a rate-limited endpoint. A
+            small jitter decorrelates lanes. Zero-config waits stay zero so
+            unit tests with ``retry_min_wait=retry_max_wait=0`` stay fast.
+            """
+            wait = base_wait(retry_state)
+            try:
+                hint = _rate_limit_hint(retry_state.outcome.exception())
+            except Exception:
+                hint = None
+            if hint is not None:
+                wait = max(wait, min(hint, config.retry_max_wait))
+            if wait > 0:
+                wait += random.uniform(0, min(1.0, wait))
+            return wait
+
         self._retry = retry(
             stop=stop_after_attempt(config.max_retries),
-            wait=wait_exponential(
-                multiplier=1,
-                min=config.retry_min_wait,
-                max=config.retry_max_wait,
-            ),
+            wait=_wait,
             retry=retry_if_exception(_retriable),
             reraise=True,
         )
@@ -206,11 +276,34 @@ class OpenAICompatibleProvider:
 
     @staticmethod
     def _handle_error(resp: httpx.Response) -> None:
-        """Raise LLMError or NonRetriableLLMError on non-200 responses."""
+        """Raise LLMError or NonRetriableLLMError on non-200 responses.
+
+        On 429 the ``Retry-After`` header (when present and parseable) is
+        attached to the error as ``retry_after_hint`` so the retry wait can
+        honor the server's backoff instead of re-hammering the endpoint.
+        """
         if resp.status_code != 200:
             if 400 <= resp.status_code < 500 and resp.status_code != 429:
                 raise NonRetriableLLMError("api_error", status=resp.status_code, body=resp.text)
-            raise LLMError("api_error", status=resp.status_code, body=resp.text)
+            err = LLMError("api_error", status=resp.status_code, body=resp.text)
+            if resp.status_code == 429:
+                try:
+                    hint = _parse_retry_after(resp.headers.get("retry-after"))
+                except Exception:
+                    hint = None
+                remaining = None
+                try:
+                    remaining = resp.headers.get("x-ratelimit-remaining")
+                except Exception:
+                    remaining = None
+                if hint is not None:
+                    err.retry_after_hint = hint
+                logger.warning(
+                    "LLM rate-limited (429)%s%s",
+                    f"; retry after {hint:g}s" if hint is not None else "",
+                    f"; X-RateLimit-Remaining: {remaining}" if remaining else "",
+                )
+            raise err
 
     # ── Subclass hooks (abstract) ──────────────────────────────────
 
