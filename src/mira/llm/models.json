@@ -188,6 +188,52 @@
     "purposes": ["indexing", "review"],
     "recommended_for": []
   },
+  "mistral/mistral-large-3": {
+    "label": "Mistral Large 3",
+    "provider": "mistral",
+    "max_input_tokens": 256000,
+    "input_cost_per_1m": 0.50,
+    "output_cost_per_1m": 1.50,
+    "purposes": ["review"],
+    "recommended_for": []
+  },
+  "mistral/mistral-medium-3-5": {
+    "label": "Mistral Medium 3.5",
+    "provider": "mistral",
+    "max_input_tokens": 256000,
+    "input_cost_per_1m": 1.50,
+    "output_cost_per_1m": 7.50,
+    "purposes": ["review"],
+    "recommended_for": []
+  },
+  "mistral/mistral-small-4": {
+    "label": "Mistral Small 4",
+    "provider": "mistral",
+    "max_input_tokens": 256000,
+    "input_cost_per_1m": 0.15,
+    "output_cost_per_1m": 0.60,
+    "purposes": ["indexing", "review"],
+    "recommended_for": []
+  },
+  "mistral/codestral": {
+    "label": "Codestral",
+    "provider": "mistral",
+    "max_input_tokens": 128000,
+    "input_cost_per_1m": 0.30,
+    "output_cost_per_1m": 0.90,
+    "purposes": ["indexing"],
+    "recommended_for": []
+  },
+  "mistral/zai-glm-5-2": {
+    "label": "Z.ai GLM 5.2",
+    "provider": "mistral",
+    "max_input_tokens": 1000000,
+    "max_output_tokens": 128000,
+    "input_cost_per_1m": 1.40,
+    "output_cost_per_1m": 4.40,
+    "purposes": ["review"],
+    "recommended_for": []
+  },
   "codex-default": {
     "label": "Codex CLI default",
     "provider": "codex-cli",

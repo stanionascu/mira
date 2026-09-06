@@ -28,6 +28,13 @@ class TestCurrentGenerationModels:
             ("deepseek/deepseek-v4-flash", (0.09, 0.18), ["indexing"]),
             ("deepseek/deepseek-v4-pro", (0.43, 0.87), ["review"]),
             ("minimax/minimax-m3", (0.30, 1.20), ["indexing", "review"]),
+            # Mistral pricing per https://mistral.ai/pricing/api/ and the
+            # zai-glm-5-2 model card at https://docs.mistral.ai/models/zai-glm-5-2.
+            ("mistral/mistral-large-3", (0.50, 1.50), ["review"]),
+            ("mistral/mistral-medium-3-5", (1.50, 7.50), ["review"]),
+            ("mistral/mistral-small-4", (0.15, 0.60), ["indexing", "review"]),
+            ("mistral/codestral", (0.30, 0.90), ["indexing"]),
+            ("mistral/zai-glm-5-2", (1.40, 4.40), ["review"]),
         ],
     )
     def test_registered_with_pricing_and_purposes(self, model_id, pricing, purposes):
