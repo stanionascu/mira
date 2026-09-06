@@ -16,6 +16,7 @@ import httpx
 from mira.exceptions import LLMError
 from mira.llm.base import (
     OpenAICompatibleProvider,
+    _chat_content_text,
     _strip_model_prefix,
 )
 
@@ -64,7 +65,7 @@ class LLMProvider(OpenAICompatibleProvider):
             data = resp.json()
 
         self._account_usage(data)
-        return data["choices"][0]["message"].get("content") or ""
+        return _chat_content_text(data["choices"][0]["message"].get("content"))
 
     async def _call_llm_with_tools(
         self,
@@ -113,12 +114,19 @@ class LLMProvider(OpenAICompatibleProvider):
                 self._no_forced_tool_choice.add(api_model)
                 body["tool_choice"] = "auto"
                 resp = await client.post(self._chat_url(), headers=self._build_headers(), json=body)
-            if resp.status_code == 400 and "reasoning" in body and "reasoning" in resp.text.lower():
+            if (
+                resp.status_code == 400
+                and ("reasoning" in body or "reasoning_effort" in body)
+                and "reasoning" in resp.text.lower()
+            ):
                 # Reasoning effort unsupported on this model/endpoint — drop it
                 # and review without thinking instead of failing the review.
+                # ("reasoning" is a substring of "reasoning_effort", so the
+                # text check covers both wire shapes.)
                 logger.info("Model %s rejected reasoning effort; retrying without it", api_model)
                 self._no_reasoning.add(api_model)
                 body.pop("reasoning", None)
+                body.pop("reasoning_effort", None)
                 body["temperature"] = (
                     temperature if temperature is not None else self.config.temperature
                 )
@@ -135,8 +143,10 @@ class LLMProvider(OpenAICompatibleProvider):
             return tool_calls[0]["function"]["arguments"]
 
         # Fallback: if the model returned content instead of a tool call,
-        # return the content as-is (some models may not support tool calling)
-        content = message.get("content") or ""
+        # return the content as-is (some models may not support tool calling).
+        # List content (reasoning chunk lists) is normalized to final-answer
+        # text first so thinking traces never leak into review parsing.
+        content = _chat_content_text(message.get("content"))
         if content:
             logger.warning("Model returned content instead of tool call, using content as fallback")
             return content
@@ -177,4 +187,9 @@ class LLMProvider(OpenAICompatibleProvider):
             data = resp.json()
 
         self._account_usage(data)
-        return data["choices"][0]["message"]
+        message = data["choices"][0]["message"]
+        # Normalize reasoning chunk lists to final-answer text so the agentic
+        # loop history stays plain chat-shaped content.
+        message = dict(message)
+        message["content"] = _chat_content_text(message.get("content"))
+        return message

@@ -199,6 +199,28 @@ class TestComplete:
             body = mock_client.post.call_args.kwargs["json"]
             assert body["reasoning"] == {"effort": "max"}
 
+        # Mistral takes the mapped effort as a root-level reasoning_effort
+        # string instead of the nested reasoning object.
+        mistral = LLMProvider(
+            LLMConfig(
+                model="mistral/mistral-medium-3-5",
+                reasoning_effort="max",
+                base_url="https://api.mistral.ai/v1",
+            )
+        )
+        with patch("mira.llm.provider.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.post = AsyncMock(return_value=mock_resp)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            await mistral.complete([{"role": "user", "content": "hi"}])
+            body = mock_client.post.call_args.kwargs["json"]
+            assert body["reasoning_effort"] == "high"
+            assert "reasoning" not in body
+            assert body["model"] == "mistral-medium-3-5"
+
     @pytest.mark.parametrize(
         ("effort", "expected"),
         [
@@ -653,6 +675,73 @@ class TestReasoningFallback:
         assert len(posts) == 2  # reasoning 400'd, then retried without it
         assert "reasoning" not in posts[1].kwargs["json"]  # dropped on the retry
         assert "some/model" in provider._no_reasoning
+
+        # Same fallback for Mistral's root-level reasoning_effort shape: the
+        # first attempt sends it, the retry drops it and remembers the model.
+        mistral = LLMProvider(
+            LLMConfig(
+                model="mistral/mistral-medium-3-5",
+                reasoning_effort="high",
+                base_url="https://api.mistral.ai/v1",
+            )
+        )
+        mistral_rejected = _mock_httpx_response(
+            {"error": {"message": "reasoning_effort is not supported for this model"}},
+            status_code=400,
+        )
+        # Snapshot request bodies per call: the 400 fallback mutates the body
+        # dict in place before retrying, so call_args_list references alone
+        # would show the post-retry state for every attempt.
+        seen_bodies: list[dict] = []
+
+        async def _recording_post(url, headers=None, json=None):
+            seen_bodies.append(dict(json))
+            return mistral_rejected if len(seen_bodies) == 1 else ok
+
+        with patch("mira.llm.provider.httpx.AsyncClient") as cls:
+            recorder = AsyncMock()
+            recorder.post = AsyncMock(side_effect=_recording_post)
+            recorder.__aenter__ = AsyncMock(return_value=recorder)
+            recorder.__aexit__ = AsyncMock(return_value=False)
+            cls.return_value = recorder
+            result = await mistral.complete_with_tools(
+                [{"role": "user", "content": "hi"}], tools=[self._TOOL]
+            )
+
+        assert result == '{"comments": []}'
+        assert len(seen_bodies) == 2
+        assert seen_bodies[0]["reasoning_effort"] == "high"
+        assert "reasoning" not in seen_bodies[0]
+        assert "reasoning_effort" not in seen_bodies[1]
+        assert "reasoning" not in seen_bodies[1]
+        assert "mistral-medium-3-5" in mistral._no_reasoning
+
+        # Reasoning chunk lists normalize to final-answer text, so a
+        # thinking trace never leaks into review parsing.
+        chunked = _mock_httpx_response(
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "content": [
+                                {
+                                    "type": "thinking",
+                                    "thinking": [{"type": "text", "text": "hmm, let me think"}],
+                                },
+                                {"type": "text", "text": '{"comments": []}'},
+                            ]
+                        }
+                    }
+                ]
+            }
+        )
+        with patch("mira.llm.provider.httpx.AsyncClient") as cls:
+            cls.return_value = self._client([chunked])
+            result = await mistral.complete_with_tools(
+                [{"role": "user", "content": "hi"}], tools=[self._TOOL]
+            )
+
+        assert result == '{"comments": []}'
 
     @pytest.mark.asyncio
     async def test_remembered_model_skips_reasoning(self):

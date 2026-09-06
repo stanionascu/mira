@@ -275,10 +275,15 @@ class ResponsesProvider(OpenAICompatibleProvider):
                 self._no_forced_tool_choice.add(api_model)
                 body["tool_choice"] = "auto"
                 resp = await client.post(self._url, headers=self._build_headers(), json=body)
-            if resp.status_code == 400 and "reasoning" in body and "reasoning" in resp.text.lower():
+            if (
+                resp.status_code == 400
+                and ("reasoning" in body or "reasoning_effort" in body)
+                and "reasoning" in resp.text.lower()
+            ):
                 logger.info("Model %s rejected reasoning effort; retrying without it", api_model)
                 self._no_reasoning.add(api_model)
                 body.pop("reasoning", None)
+                body.pop("reasoning_effort", None)
                 body["temperature"] = (
                     temperature if temperature is not None else self.config.temperature
                 )
@@ -332,11 +337,16 @@ class ResponsesProvider(OpenAICompatibleProvider):
                 headers=self._build_headers(),
                 json=body,
             )
-            if resp.status_code == 400 and "reasoning" in body and "reasoning" in resp.text.lower():
+            if (
+                resp.status_code == 400
+                and ("reasoning" in body or "reasoning_effort" in body)
+                and "reasoning" in resp.text.lower()
+            ):
                 api_model = _strip_model_prefix(model, self.config.base_url)
                 logger.info("Model %s rejected reasoning effort; retrying without it", api_model)
                 self._no_reasoning.add(api_model)
                 body.pop("reasoning", None)
+                body.pop("reasoning_effort", None)
                 body["temperature"] = (
                     temperature if temperature is not None else self.config.temperature
                 )

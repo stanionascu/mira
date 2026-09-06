@@ -167,6 +167,34 @@ def _rate_limit_hint(exception: BaseException) -> float | None:
             return float(hint)
         current = current.__cause__ or current.__context__
     return None
+
+
+def _chat_content_text(content: object) -> str:
+    """Normalize a chat message ``content`` to plain text.
+
+    Plain-string responses pass through. Reasoning endpoints (e.g. Mistral
+    with ``reasoning_effort="high"``) return a list of chunks — ``thinking``
+    chunks carry the reasoning trace, ``text`` chunks the final answer. Only
+    the final-answer text is kept so thinking traces never leak into review
+    parsing.
+    """
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for chunk in content:
+            if isinstance(chunk, str):
+                parts.append(chunk)
+            elif isinstance(chunk, dict) and chunk.get("type") in ("text", "output_text"):
+                text = chunk.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+        return "".join(parts)
+    return str(content)
+
+
 # ── Shared base for OpenAI-compatible providers ─────────────────────
 
 
@@ -253,6 +281,10 @@ class OpenAICompatibleProvider:
         any per-provider remap from the profile. Anthropic models reject a
         custom ``temperature`` while thinking is on, so we drop it.
         No-op when reasoning is off, keeping the request unchanged.
+
+        Profiles may set ``reasoning_field: "reasoning_effort"`` (Mistral):
+        the mapped effort is then sent as a root-level ``reasoning_effort``
+        string instead of the nested ``reasoning`` object.
         """
         effort = self.config.reasoning_effort
         if not effort or effort == "off":
@@ -260,7 +292,10 @@ class OpenAICompatibleProvider:
         if body.get("model") in self._no_reasoning:
             return
         effort = self.profile.get("reasoning_effort_map", {}).get(effort, effort)
-        body["reasoning"] = {"effort": effort}
+        if self.profile.get("reasoning_field") == "reasoning_effort":
+            body["reasoning_effort"] = effort
+        else:
+            body["reasoning"] = {"effort": effort}
         body.pop("temperature", None)
 
     def _account_usage(self, data: dict) -> None:
