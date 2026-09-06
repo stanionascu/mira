@@ -25,11 +25,14 @@ _BUNDLED_PATH = Path(__file__).parent / "providers.json"
 _OVERRIDE_ENV = "MIRA_PROVIDERS_JSON_PATH"
 
 # The portable fallback for any endpoint without a profile: bare model name,
-# no attribution headers, no reasoning remap.
+# no attribution headers, no reasoning remap. ``reasoning_field`` selects the
+# wire shape for extended thinking: nested ``reasoning`` object (default) or
+# root-level ``reasoning_effort`` string (Mistral).
 DEFAULT_PROFILE: dict = {
     "name": "",
     "model_prefix": "strip",
     "extra_headers": {},
+    "reasoning_field": "reasoning",
     "reasoning_effort_map": {},
     "api_key_env": None,
 }

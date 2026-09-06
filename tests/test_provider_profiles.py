@@ -14,6 +14,20 @@ class TestResolve:
         assert p["model_prefix"] == "keep"
         assert p["extra_headers"]["X-Title"] == "Mira Code Reviewer"
         assert p["reasoning_effort_map"] == {"max": "xhigh"}
+        # Mistral resolves with its own key env, strip policy, and
+        # root-level reasoning_effort wire shape.
+        m = profiles.resolve("https://api.mistral.ai/v1")
+        assert m["name"] == "mistral"
+        assert m["model_prefix"] == "strip"
+        assert m["api_key_env"] == "MISTRAL_API_KEY"
+        assert m["reasoning_field"] == "reasoning_effort"
+        assert m["reasoning_effort_map"] == {
+            "low": "none",
+            "medium": "none",
+            "high": "high",
+            "xhigh": "high",
+            "max": "high",
+        }
 
     def test_trailing_slash_insensitive(self):
         assert profiles.resolve("https://openrouter.ai/api/v1/")["name"] == "openrouter"
@@ -23,6 +37,7 @@ class TestResolve:
         assert p["name"] == ""
         assert p["model_prefix"] == "strip"
         assert p["extra_headers"] == {}
+        assert p["reasoning_field"] == "reasoning"
         assert p["reasoning_effort_map"] == {}
 
     def test_sparse_profile_fills_from_default(self, tmp_path, monkeypatch):

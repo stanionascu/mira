@@ -488,6 +488,11 @@ class TestStripModelPrefix:
 
         result = _strip_model_prefix("minimax/MiniMax-M2.7", "https://api.minimax.io/v1")
         assert result == "MiniMax-M2.7"
+        # Mistral uses the same strip policy for its vendor prefix.
+        assert (
+            _strip_model_prefix("mistral/mistral-medium-3-5", "https://api.mistral.ai/v1")
+            == "mistral-medium-3-5"
+        )
 
     def test_non_openrouter_url_strips_anthropic_prefix(self):
         from mira.llm.provider import _strip_model_prefix

@@ -10,5 +10,14 @@
       "X-Title": "Mira Code Reviewer"
     },
     "reasoning_effort_map": { "max": "xhigh" }
+  },
+
+  "mistral": {
+    "base_url": "https://api.mistral.ai/v1",
+    "api_key_env": "MISTRAL_API_KEY",
+    "model_prefix": "strip",
+    "extra_headers": {},
+    "reasoning_field": "reasoning_effort",
+    "reasoning_effort_map": { "low": "none", "medium": "none", "high": "high", "xhigh": "high", "max": "high" }
   }
 }
