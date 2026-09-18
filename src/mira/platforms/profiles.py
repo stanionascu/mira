@@ -88,6 +88,10 @@ def _load() -> dict[str, dict]:
         api = os.environ.get("MIRA_FORGEJO_API_URL")
         if api:
             fj["api_url"] = api.rstrip("/")
+
+        base_url = os.environ.get("MIRA_FORGEJO_BASE_URL")
+        if base_url:
+            fj["base_url"] = base_url.rstrip("/")
     return profiles
 
 

@@ -6,6 +6,8 @@ import enum
 from dataclasses import dataclass, field
 
 WALKTHROUGH_MARKER = "<!-- mira-walkthrough -->"
+PR_SUMMARY_START = "<!-- mira-pr-summary-start -->"
+PR_SUMMARY_END = "<!-- mira-pr-summary-end -->"
 
 
 class FileChangeType(enum.Enum):
@@ -218,12 +220,15 @@ class WalkthroughResult:
         parts.append(self.summary)
 
         if self.sequence_diagram:
-            diagram = self.sequence_diagram.strip()
-            # _sanitize_mermaid has already quoted labels with dots/slashes;
-            # re-quoting here would reintroduce the nested-quote bug.
-            if diagram and any(
-                diagram.startswith(k) for k in ("graph ", "flowchart ", "sequenceDiagram")
-            ):
+            # Hardening at render time — the single choke point every
+            # comment path passes through. A diagram that is outside the
+            # supported Mermaid subset is dropped rather than posted:
+            # GitHub renders a broken ```mermaid fence as an ugly
+            # "Unable to render rich display" error.
+            from mira.llm.mermaid import harden_mermaid
+
+            diagram = harden_mermaid(self.sequence_diagram)
+            if diagram:
                 parts.append("")
                 parts.append("```mermaid")
                 parts.append(diagram)
@@ -386,6 +391,7 @@ class ReviewResult:
     comments: list[ReviewComment] = field(default_factory=list)
     key_issues: list[KeyIssue] = field(default_factory=list)
     summary: str = ""
+    pr_summary_block: str = ""
     reviewed_files: int = 0
     skipped_reason: str | None = None
     token_usage: dict[str, int] = field(default_factory=dict)
