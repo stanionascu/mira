@@ -284,6 +284,16 @@ class ReviewConfig(BaseModel):
     # locally before pushing — only the final diff gets reviewed.
     review_on_synchronize: bool = True
 
+    # Light review mode: trade the unbounded token spenders for a cheaper
+    # review. When True, `apply_light_mode()` (run once at engine startup)
+    # forces: agentic_tools off, security_agentic off, context_token_budget
+    # 2000, jit_java_go off, overlap off, walkthrough_sequence_diagram off,
+    # ensemble_runs 1, and the file-history fetch skipped. The main review,
+    # security one-shot pass, self-critique, summary, dependency pass, and
+    # verify-fixes are unchanged, so review quality degrades gracefully
+    # rather than dropping passes.
+    light_mode: bool = False
+
 
 class IndexConfig(BaseModel):
     # Skip indexing any file larger than this (bytes). Generated SDKs, vendored
@@ -311,6 +321,38 @@ class MiraConfig(BaseModel):
     index: IndexConfig = Field(default_factory=IndexConfig)
     provider: ProviderConfig = Field(default_factory=ProviderConfig)
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
+
+
+# Cross-file context budget (tokens) forced by light mode — a quarter of the
+# default 8000. Tree-sitter-precise spans keep this dense rather than lossy.
+_LIGHT_CONTEXT_TOKEN_BUDGET = 2_000
+
+
+def apply_light_mode(config: MiraConfig) -> MiraConfig:
+    """Return the effective config with the light-mode bundle applied.
+
+    No-op returning ``config`` unchanged when ``review.light_mode`` is False.
+    Otherwise returns a deep copy with the unbounded token spenders forced
+    down (see the ``light_mode`` field docs) — the caller's object is never
+    mutated, and the transform is idempotent.
+    """
+    if not config.review.light_mode:
+        return config
+    light = config.model_copy(deep=True)
+    review = light.review
+    review.agentic_tools = False
+    review.security_agentic = False
+    review.context_token_budget = _LIGHT_CONTEXT_TOKEN_BUDGET
+    review.jit_java_go = False
+    review.overlap.enabled = False
+    review.walkthrough_sequence_diagram = False
+    review.ensemble_runs = 1
+    logger.info(
+        "Light mode: agentic loops, overlap, file history, and sequence "
+        "diagram disabled; context budget %d; ensemble forced to 1",
+        _LIGHT_CONTEXT_TOKEN_BUDGET,
+    )
+    return light
 
 
 def find_config_file(start_dir: Path | None = None) -> Path | None:

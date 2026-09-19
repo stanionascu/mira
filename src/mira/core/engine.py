@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from mira.llm.base import LLMProviderProtocol
 
 from mira.analysis.severity import classify_severity
-from mira.config import MiraConfig
+from mira.config import MiraConfig, apply_light_mode
 from mira.core.chunker import chunk_files
 from mira.core.context import expand_context
 from mira.core.diff_parser import parse_diff
@@ -419,7 +419,9 @@ class ReviewEngine:
         indexing_llm: LLMProviderProtocol | None = None,
         security_llm: LLMProviderProtocol | None = None,
     ) -> None:
-        self.config = config
+        # Normalize last: load_config() already layered DB → yaml → overrides,
+        # so light mode sees the final effective flags. No-op unless enabled.
+        self.config = apply_light_mode(config)
         self.llm = llm
         self.indexing_llm = indexing_llm or llm
         self.security_llm = security_llm or llm
@@ -1257,6 +1259,8 @@ class ReviewEngine:
             self._walkthrough_notify_task = _asyncio.create_task(_notify_caller())
 
         async def _fetch_file_history() -> dict:
+            if self.config.review.light_mode:
+                return {}
             pr_info = getattr(self, "_pr_info", None)
             if pr_info is None or self.provider is None:
                 return {}

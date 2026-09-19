@@ -87,3 +87,10 @@ review:
   # disable (default) = off; append = add/update the marked block, preserving the
   #   author's description; replace = set the entire body to the summary block.
   # pr_summary: "disable"
+  # Light review mode (default false): trade the unbounded token spenders for
+  #   a cheaper review. Forces agentic_tools off, security_agentic off,
+  #   context_token_budget 2000, jit_java_go off, overlap off,
+  #   walkthrough_sequence_diagram off, ensemble_runs 1, and skips the
+  #   file-history fetch. Main review, security one-shot, self-critique,
+  #   summary, dependency, and verify-fixes passes are unchanged.
+  # light_mode: false
