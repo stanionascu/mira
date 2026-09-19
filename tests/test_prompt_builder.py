@@ -6,8 +6,22 @@ from mira.config import MiraConfig
 from mira.llm.prompts.review import (
     build_dependency_review_prompt,
     build_review_prompt,
+    build_security_review_prompt,
 )
 from mira.models import FileChangeType, FileDiff, HunkInfo
+
+
+def _diff(path: str = "test.py") -> list[FileDiff]:
+    return [
+        FileDiff(
+            path=path,
+            change_type=FileChangeType.MODIFIED,
+            hunks=[HunkInfo(1, 5, 1, 5, "content")],
+            language="python",
+            added_lines=1,
+            deleted_lines=0,
+        )
+    ]
 
 
 class TestBuildReviewPrompt:
@@ -220,6 +234,37 @@ class TestBuildDependencyReviewPrompt:
         messages = build_dependency_review_prompt(self._manifest(), existing_packages=[])
         system = messages[0]["content"]
         assert "isn't indexed" in system
+
+
+class TestReviewPromptBrevity:
+    def test_brevity_section_present(self):
+        messages = build_review_prompt(_diff(), MiraConfig())
+        system = messages[0]["content"]
+        assert "## Brevity" in system
+        assert "1–3 sentences" in system
+        assert "≤600" in system
+        assert "≤60" in system
+
+    def test_schema_demands_concise_body(self):
+        from mira.llm.tool_schemas import SUBMIT_REVIEW_TOOL
+
+        props = SUBMIT_REVIEW_TOOL["function"]["parameters"]["properties"]["comments"]["items"][
+            "properties"
+        ]
+        assert "Concise" in props["body"]["description"]
+        assert "≤60" in props["title"]["description"]
+
+    def test_security_pass_has_brevity_budget(self):
+        messages = build_security_review_prompt(_diff())
+        system = messages[0]["content"]
+        assert "Be brief" in system
+        assert "≤600" in system
+
+    def test_dependency_pass_has_brevity_budget(self):
+        messages = build_dependency_review_prompt(_diff("package.json"))
+        system = messages[0]["content"]
+        assert "Be brief" in system
+        assert "≤600" in system
 
 
 class TestReviewPromptCrossBoundaryTracing:

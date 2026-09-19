@@ -51,6 +51,7 @@ If a pattern matches but you can prove (from the diff alone) that the input is s
 - **No nitpicks.** If the only argument is "could be more defensive," skip it.
 - **Set every comment's `category` to `security`** so they're recognised downstream.
 - For each comment, write an `agent_prompt` describing the exact code change needed to fix it.
+- **Be brief.** Each `body` is 1–3 sentences (≤600 chars): name the vulnerability, the attack vector, and the fix. Titles ≤60 chars.
 
 ## Output
 

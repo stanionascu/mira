@@ -47,10 +47,13 @@ SUBMIT_REVIEW_TOOL = {
                                     "other",
                                 ],
                             },
-                            "title": {"type": "string", "description": "Short title (<80 chars)."},
+                            "title": {
+                                "type": "string",
+                                "description": "Short title (≤60 chars) naming the defect.",
+                            },
                             "body": {
                                 "type": "string",
-                                "description": "Detailed explanation of the issue. Use single backticks for inline code references. Do NOT use triple-backtick code blocks.",
+                                "description": "Concise explanation of the issue (1-3 sentences, ≤600 chars): lead with the defect and its impact. Use single backticks for inline code references. Do NOT use triple-backtick code blocks.",
                             },
                             "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
                             "existing_code": {
