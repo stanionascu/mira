@@ -492,19 +492,22 @@ class TestFormatCommentBodyAgentPrompt:
         details_pos = body.index("<details>")
         assert details_pos > suggestion_pos
 
-    def test_agent_prompt_includes_suggestion_code(self):
+    def test_agent_prompt_excludes_suggestion_code(self):
         body = _format_comment_body(
             self._make_comment(
                 suggestion="return bar()",
                 agent_prompt="In src/foo.py at line 10, replace foo() with bar().",
             )
         )
-        # The agent prompt section should contain the suggestion code
+        # The details block carries only the agent prompt; the suggestion
+        # renders once as a ```suggestion fence and is not duplicated here.
         details_start = body.index("<details>")
         details_end = body.index("</details>")
         details_section = body[details_start:details_end]
-        assert "Apply this code change:" in details_section
-        assert "return bar()" in details_section
+        assert "Apply this code change:" not in details_section
+        assert "return bar()" not in details_section
+        assert "In src/foo.py at line 10, replace foo() with bar()." in details_section
+        assert body.count("return bar()") == 1
 
     def test_agent_prompt_without_suggestion_has_no_code_block(self):
         body = _format_comment_body(

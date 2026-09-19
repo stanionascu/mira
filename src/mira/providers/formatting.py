@@ -183,9 +183,10 @@ def format_comment_body(comment: ReviewComment, bot_name: str = "miracodeai") ->
         parts.append("```")
 
     if comment.agent_prompt:
+        # The block carries only the agent prompt. The suggestion (when any)
+        # already renders as a ```suggestion fence above — duplicating it
+        # here roughly doubles long comments.
         prompt_text = comment.agent_prompt
-        if comment.suggestion:
-            prompt_text += f"\n\nApply this code change:\n\n{html.unescape(comment.suggestion)}"
 
         # A fenced block (not <pre>) — GitHub 422'd on <pre>-wrapped prompts.
         max_run = 0
