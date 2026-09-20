@@ -190,9 +190,9 @@ export function WebhookFormPage() {
                   onChange={(e) => setUrl(e.target.value)}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Any HTTPS endpoint works. Slack and Teams URLs are
-                  auto-formatted; everything else receives a generic JSON
-                  payload.
+                  Any HTTPS endpoint works. Slack, Teams, and Google Chat
+                  URLs are auto-formatted; everything else receives a generic
+                  JSON payload.
                 </p>
               </div>
             </CardContent>
