@@ -557,6 +557,17 @@ class ReviewEngine:
         pr_info = await self.provider.get_pr_info(pr_url)
         self._pr_info = pr_info
 
+        # Stable per-PR prompt-cache key (Mistral `prompt_cache_key` today):
+        # every review-path call shares the system-prompt prefix, so one key
+        # per PR maximizes cache hits across rounds, chunks, and passes.
+        # Set on the review + security providers only; indexing calls are
+        # per-file across repos with no shared prefix. No-op for vendors
+        # whose profile names no cache-key field.
+        cache_key = f"mira-{pr_info.owner}-{pr_info.repo}-{pr_info.number}"
+        for provider in (self.llm, self.security_llm):
+            if hasattr(provider, "prompt_cache_key"):
+                provider.prompt_cache_key = cache_key
+
         async def _resolve_threads() -> tuple[
             int, int, list[UnresolvedThread], list[ThreadDecision]
         ]:

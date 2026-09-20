@@ -163,6 +163,33 @@ class TestReviewEngine:
         mock_provider.post_review.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_review_pr_stamps_cache_key(
+        self, mock_llm: LLMProvider, mock_provider: AsyncMock
+    ):
+        review_llm = MagicMock()
+        review_llm.walkthrough = mock_llm.walkthrough
+        review_llm.review = mock_llm.review
+        review_llm.complete = mock_llm.complete
+        review_llm.count_tokens = mock_llm.count_tokens
+        review_llm.usage = mock_llm.usage
+        security_llm = MagicMock()
+        security_llm.count_tokens = MagicMock(return_value=100)
+        indexing_llm = MagicMock()
+        engine = ReviewEngine(
+            config=MiraConfig(),
+            llm=review_llm,
+            provider=mock_provider,
+            security_llm=security_llm,
+            indexing_llm=indexing_llm,
+        )
+        await engine.review_pr("https://github.com/test/repo/pull/1")
+
+        assert review_llm.prompt_cache_key == "mira-test-repo-1"
+        assert security_llm.prompt_cache_key == "mira-test-repo-1"
+        # Indexing calls share no prefix with the review — left unstamped.
+        assert "prompt_cache_key" not in indexing_llm.__dict__
+
+    @pytest.mark.asyncio
     async def test_no_post_when_no_comments(self, mock_provider: AsyncMock):
         llm = MagicMock(spec=LLMProvider)
         no_comments = json.dumps(
