@@ -316,6 +316,15 @@ class DatabaseConfig(BaseModel):
     )
 
 
+_LOG_LEVEL_NUMBERS = {
+    "DEBUG": logging.DEBUG,
+    "INFO": logging.INFO,
+    "WARNING": logging.WARNING,
+    "ERROR": logging.ERROR,
+    "CRITICAL": logging.CRITICAL,
+}
+
+
 class MiraConfig(BaseModel):
     llm: LLMConfig = Field(default_factory=LLMConfig)
     filter: FilterConfig = Field(default_factory=FilterConfig)
@@ -323,11 +332,43 @@ class MiraConfig(BaseModel):
     index: IndexConfig = Field(default_factory=IndexConfig)
     provider: ProviderConfig = Field(default_factory=ProviderConfig)
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
+    # Process log level (debug/info/warning/error/critical, case-insensitive).
+    # Unset keeps each command's default (serve: info, review: warning).
+    # Applied once at startup; --verbose always forces debug.
+    log_level: str | None = None
+
+    @field_validator("log_level")
+    @classmethod
+    def _normalize_log_level(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().upper()
+        if normalized not in _LOG_LEVEL_NUMBERS:
+            raise ValueError(
+                f"Invalid log_level {value!r}: expected debug, info, warning, error, or critical"
+            )
+        return normalized
 
 
 # Cross-file context budget (tokens) forced by light mode — a quarter of the
 # default 8000. Tree-sitter-precise spans keep this dense rather than lossy.
 _LIGHT_CONTEXT_TOKEN_BUDGET = 2_000
+
+
+def resolve_log_level(verbose: bool, log_level: str | None, default: int) -> int:
+    """Map CLI/config logging knobs to a ``logging`` level number.
+
+    ``--verbose`` always wins (debug); otherwise the validated config value;
+    otherwise the calling command's default.
+    """
+    if verbose:
+        return logging.DEBUG
+    if log_level is not None:
+        try:
+            return _LOG_LEVEL_NUMBERS[log_level]
+        except KeyError:
+            raise ValueError(f"Invalid log_level {log_level!r}") from None
+    return default
 
 
 def apply_light_mode(config: MiraConfig) -> MiraConfig:

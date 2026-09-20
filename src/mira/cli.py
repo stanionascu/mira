@@ -11,7 +11,7 @@ from datetime import UTC
 import click
 
 from mira import __version__
-from mira.config import load_config
+from mira.config import load_config, resolve_log_level
 from mira.core.engine import ReviewEngine
 from mira.exceptions import MiraError
 from mira.llm import create_llm
@@ -195,6 +195,7 @@ def review(
         )
     except MiraError as e:
         raise click.ClickException(str(e)) from e
+    logging.getLogger().setLevel(resolve_log_level(verbose, config.log_level, logging.WARNING))
 
     from mira.dashboard.models_config import llm_config_for
 
@@ -363,18 +364,25 @@ def serve(
             f"Missing dependency: {exc}. Install with: pip install mira-reviewer[serve]"
         ) from exc
 
+    # Load deployment config before basicConfig so log_level can feed it.
+    deployment_config = None
+    if config_path:
+        try:
+            deployment_config = set_global_defaults(config_path)
+        except Exception as exc:
+            raise click.ClickException(f"Invalid --config file: {exc}") from exc
+
     logging.basicConfig(
-        level=logging.DEBUG if verbose else logging.INFO,
+        level=resolve_log_level(
+            verbose,
+            deployment_config.log_level if deployment_config else None,
+            logging.INFO,
+        ),
         format="%(name)s %(levelname)s: %(message)s",
         stream=sys.stdout,
     )
-
     if config_path:
-        try:
-            set_global_defaults(config_path)
-            click.echo(f"Loaded deployment config: {config_path}")
-        except Exception as exc:
-            raise click.ClickException(f"Invalid --config file: {exc}") from exc
+        click.echo(f"Loaded deployment config: {config_path}")
 
     github_configured = bool(app_id and private_key and webhook_secret)
     gitlab_configured = bool(gitlab_token and gitlab_webhook_secret)

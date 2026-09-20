@@ -1,6 +1,12 @@
 # Mira configuration file
 # Copy this to .mira.yaml in your repository root
 
+# Process log level: debug, info, warning, error, critical (case-insensitive).
+# Unset keeps each command's default (serve: info, review: warning);
+# --verbose always forces debug. In a per-repo file this only affects
+# `mira review` runs — a running server reads it from its deployment config.
+# log_level: info
+
 llm:
   # Provider: "openai" (default, any OpenAI-compatible endpoint) or "bedrock" (AWS)
   # provider: "openai"

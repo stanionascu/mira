@@ -244,7 +244,7 @@ class TestCLI:
             patch("mira.cli.ReviewEngine") as mock_engine_cls,
             patch("mira.cli.load_config") as mock_load,
         ):
-            mock_load.return_value = MagicMock()
+            mock_load.return_value = MagicMock(log_level=None)
             mock_engine = MagicMock()
             mock_engine.review_diff = AsyncMock(return_value=review_result)
             mock_engine_cls.return_value = mock_engine
@@ -314,7 +314,7 @@ class TestCLI:
             patch("mira.cli.ReviewEngine") as mock_engine_cls,
             patch("mira.cli.load_config") as mock_load,
         ):
-            mock_load.return_value = MagicMock()
+            mock_load.return_value = MagicMock(log_level=None)
             mock_engine = MagicMock()
             mock_engine.review_diff = AsyncMock(return_value=review_result)
             mock_engine_cls.return_value = mock_engine
@@ -335,7 +335,7 @@ class TestCLI:
             patch("mira.cli.ReviewEngine") as mock_engine_cls,
             patch("mira.cli.load_config") as mock_load,
         ):
-            mock_load.return_value = MagicMock()
+            mock_load.return_value = MagicMock(log_level=None)
             mock_engine = MagicMock()
             mock_engine.review_diff = AsyncMock(return_value=review_result)
             mock_engine_cls.return_value = mock_engine

@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import pytest
 
 import mira.config as mira_config
-from mira.config import MiraConfig, find_config_file, load_config, set_global_defaults
+from mira.config import (
+    MiraConfig,
+    find_config_file,
+    load_config,
+    resolve_log_level,
+    set_global_defaults,
+)
 from mira.exceptions import ConfigError
 
 
@@ -305,3 +312,26 @@ class TestGlobalDefaults:
         )
         assert config.review.walkthrough is False
         assert config.review.walkthrough_sequence_diagram is True
+
+
+class TestLogLevel:
+    def test_default_is_none(self):
+        assert MiraConfig().log_level is None
+
+    def test_value_normalized_to_upper(self, tmp_path: Path):
+        config_file = tmp_path / "mira.yaml"
+        config_file.write_text("log_level: debug\n")
+        assert load_config(config_file).log_level == "DEBUG"
+
+    def test_invalid_value_rejected(self, tmp_path: Path):
+        config_file = tmp_path / "mira.yaml"
+        config_file.write_text("log_level: verbose\n")
+        with pytest.raises(ConfigError, match="Invalid log_level"):
+            load_config(config_file)
+
+    def test_resolve_verbose_wins(self):
+        assert resolve_log_level(True, "ERROR", logging.INFO) == logging.DEBUG
+
+    def test_resolve_config_then_default(self):
+        assert resolve_log_level(False, "ERROR", logging.INFO) == logging.ERROR
+        assert resolve_log_level(False, None, logging.WARNING) == logging.WARNING
