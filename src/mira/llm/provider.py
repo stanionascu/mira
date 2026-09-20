@@ -54,6 +54,7 @@ class LLMProvider(OpenAICompatibleProvider):
         if json_mode:
             body["response_format"] = {"type": "json_object"}
         self._apply_reasoning(body)
+        self._apply_cache_key(body)
 
         async with httpx.AsyncClient(timeout=self.config.request_timeout) as client:
             resp = await client.post(
@@ -97,6 +98,7 @@ class LLMProvider(OpenAICompatibleProvider):
             "max_tokens": self.config.max_tokens,
         }
         self._apply_reasoning(body)
+        self._apply_cache_key(body)
 
         async with httpx.AsyncClient(timeout=self.config.request_timeout) as client:
             resp = await client.post(
@@ -176,6 +178,7 @@ class LLMProvider(OpenAICompatibleProvider):
             "max_tokens": self.config.max_tokens,
         }
         self._apply_reasoning(body)
+        self._apply_cache_key(body)
 
         async with httpx.AsyncClient(timeout=self.config.request_timeout) as client:
             resp = await client.post(

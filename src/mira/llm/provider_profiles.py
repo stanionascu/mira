@@ -35,6 +35,7 @@ DEFAULT_PROFILE: dict = {
     "reasoning_field": "reasoning",
     "reasoning_effort_map": {},
     "api_key_env": None,
+    "cache_key_field": None,
 }
 
 

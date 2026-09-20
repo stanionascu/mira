@@ -758,3 +758,83 @@ class TestReasoningFallback:
 
         assert len(posts) == 1  # no wasted reasoning attempt
         assert "reasoning" not in posts[0].kwargs["json"]
+
+
+_MISTRAL_BASE_URL = "https://api.mistral.ai/v1"
+_CACHE_TOOL = {"type": "function", "function": {"name": "submit_review", "parameters": {}}}
+
+
+def _posted_bodies(mock_client_cls) -> list[dict]:
+    return [call.kwargs["json"] for call in mock_client_cls.return_value.post.call_args_list]
+
+
+def _patched_client(response):
+    """AsyncClient mock returning `response` for every POST."""
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(return_value=response)
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    return patch("mira.llm.provider.httpx.AsyncClient", return_value=mock_client)
+
+
+class TestPromptCacheKey:
+    @pytest.mark.asyncio
+    async def test_mistral_complete_includes_key(self):
+        provider = LLMProvider(
+            LLMConfig(model="mistral/mistral-large-3", base_url=_MISTRAL_BASE_URL)
+        )
+        provider.prompt_cache_key = "mira-acme-web-9"
+        ok = _mock_httpx_response(_make_response_json("ok"))
+
+        with _patched_client(ok) as cls:
+            await provider.complete([{"role": "user", "content": "hi"}])
+            (body,) = _posted_bodies(cls)
+
+        assert body["prompt_cache_key"] == "mira-acme-web-9"
+
+    @pytest.mark.asyncio
+    async def test_mistral_without_key_sends_no_field(self):
+        provider = LLMProvider(
+            LLMConfig(model="mistral/mistral-large-3", base_url=_MISTRAL_BASE_URL)
+        )
+        ok = _mock_httpx_response(_make_response_json("ok"))
+
+        with _patched_client(ok) as cls:
+            await provider.complete([{"role": "user", "content": "hi"}])
+            (body,) = _posted_bodies(cls)
+
+        assert "prompt_cache_key" not in body
+
+    @pytest.mark.asyncio
+    async def test_non_mistral_ignores_key(self):
+        # Other vendors must see byte-identical bodies with the key set.
+        keyed = LLMProvider(LLMConfig(model="some/model"))
+        keyed.prompt_cache_key = "mira-acme-web-9"
+        plain = LLMProvider(LLMConfig(model="some/model"))
+        ok = _mock_httpx_response(_make_response_json("ok"))
+
+        with _patched_client(ok) as cls:
+            await keyed.complete([{"role": "user", "content": "hi"}])
+            (keyed_body,) = _posted_bodies(cls)
+        with _patched_client(ok) as cls:
+            await plain.complete([{"role": "user", "content": "hi"}])
+            (plain_body,) = _posted_bodies(cls)
+
+        assert "prompt_cache_key" not in keyed_body
+        assert keyed_body == plain_body
+
+    @pytest.mark.asyncio
+    async def test_mistral_tool_call_includes_key(self):
+        provider = LLMProvider(
+            LLMConfig(model="mistral/mistral-large-3", base_url=_MISTRAL_BASE_URL)
+        )
+        provider.prompt_cache_key = "mira-acme-web-9"
+        ok = _mock_httpx_response(_make_tool_response_json('{"comments": []}'))
+
+        with _patched_client(ok) as cls:
+            await provider.complete_with_tools(
+                [{"role": "user", "content": "hi"}], tools=[_CACHE_TOOL]
+            )
+            (body,) = _posted_bodies(cls)
+
+        assert body["prompt_cache_key"] == "mira-acme-web-9"

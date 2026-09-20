@@ -218,6 +218,9 @@ class OpenAICompatibleProvider:
         self.total_completion_tokens = 0
         self._no_forced_tool_choice: set[str] = set()
         self._no_reasoning: set[str] = set()
+        # Stable id (e.g. per-PR) sent as the profile's cache-key field so
+        # vendors with prefix caching can reuse prompt prefixes. None = off.
+        self.prompt_cache_key: str | None = None
 
         # Apply retry decorator imperatively so it reads config values
         # (max_retries, retry_min_wait, retry_max_wait) at instance time.
@@ -297,6 +300,17 @@ class OpenAICompatibleProvider:
         else:
             body["reasoning"] = {"effort": effort}
         body.pop("temperature", None)
+
+    def _apply_cache_key(self, body: dict) -> None:
+        """Stamp the vendor's prompt-cache key when configured.
+
+        No-op unless both a ``prompt_cache_key`` is set on the instance and
+        the resolved profile names a ``cache_key_field`` (Mistral today) —
+        other endpoints keep byte-identical bodies.
+        """
+        field = self.profile.get("cache_key_field")
+        if field and self.prompt_cache_key:
+            body[field] = self.prompt_cache_key
 
     def _account_usage(self, data: dict) -> None:
         """Accumulate token counts. Default: chat/completions key names.
