@@ -284,14 +284,16 @@ class ReviewConfig(BaseModel):
     # locally before pushing — only the final diff gets reviewed.
     review_on_synchronize: bool = True
 
-    # Light review mode: trade the unbounded token spenders for a cheaper
-    # review. When True, `apply_light_mode()` (run once at engine startup)
-    # forces: agentic_tools off, security_agentic off, context_token_budget
-    # 2000, jit_java_go off, overlap off, walkthrough_sequence_diagram off,
-    # ensemble_runs 1, and the file-history fetch skipped. The main review,
-    # security one-shot pass, self-critique, summary, dependency pass, and
-    # verify-fixes are unchanged, so review quality degrades gracefully
-    # rather than dropping passes.
+    # Light review mode: the model reviews the diff alone — no repo/PR
+    # context (code context, file history, learned/custom rules, team
+    # conventions, open/resolved threads) is fetched or supplied, and the
+    # corresponding lookups are skipped. Static instructions, footguns, PR
+    # title/description, and the review-round behavior stay. When True,
+    # `apply_light_mode()` (run once at engine startup) also forces:
+    # agentic_tools off, security_agentic off, context_token_budget 2000,
+    # jit_java_go off, overlap off, walkthrough_sequence_diagram off, and
+    # ensemble_runs 1. The main review, security one-shot, self-critique,
+    # summary, dependency pass, and verify-fixes still run.
     light_mode: bool = False
 
 
