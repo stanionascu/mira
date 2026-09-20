@@ -1,4 +1,4 @@
-"""Outbound webhook notifications (Slack / Microsoft Teams / generic JSON).
+"""Outbound webhook notifications (Slack / Microsoft Teams / Google Chat / generic JSON).
 
 Mira can POST to user-configured endpoints when interesting things happen —
 a PR review finishes, a review errors out, a repo finishes indexing. Webhooks
@@ -88,11 +88,16 @@ class WebhookConfig(BaseModel):
 
 
 def detect_format(url: str) -> str:
-    """Classify a webhook URL as ``"slack"``, ``"teams"`` or ``"generic"``."""
+    """Classify a webhook URL as ``"slack"``, ``"teams"``, ``"googlechat"`` or ``"generic"``."""
     parsed = urlparse(url)
     host = (parsed.hostname or "").lower()
     if host == "hooks.slack.com":
         return "slack"
+    # Google Chat incoming webhooks live on exactly this host
+    # (…/v1/spaces/{space}/messages?key=…&token=…); an exact match leaves no
+    # room for subdomain confusion.
+    if host == "chat.googleapis.com":
+        return "googlechat"
     # Discord's Slack-compatible variant (…/webhooks/{id}/{token}/slack).
     # A bare Discord URL expects Discord's own schema, which Mira doesn't
     # emit — leave it "generic" so the test button surfaces the 400 loudly.
@@ -183,6 +188,38 @@ def render(event: str, data: dict[str, Any], fmt: str) -> dict[str, Any]:
             "themeColor": color,
             "title": title,
             "text": body,
+        }
+
+    if fmt == "googlechat":
+        # Cards v2: `text` is the notification fallback; the card carries a
+        # header, the body paragraph, and a View-PR button when the event has
+        # a PR URL (indexing events don't). cardId is stable per event type.
+        widgets: list[dict[str, Any]] = [{"textParagraph": {"text": body}}]
+        pr_url = data.get("pr_url", "")
+        if pr_url:
+            widgets.append(
+                {
+                    "buttonList": {
+                        "buttons": [
+                            {
+                                "text": "View PR",
+                                "onClick": {"openLink": {"url": pr_url}},
+                            }
+                        ]
+                    }
+                }
+            )
+        return {
+            "text": title,
+            "cardsV2": [
+                {
+                    "cardId": f"mira-{event}",
+                    "card": {
+                        "header": {"title": title, "subtitle": data.get("repo", "")},
+                        "sections": [{"widgets": widgets}],
+                    },
+                }
+            ],
         }
 
     # generic: a stable, self-describing JSON envelope.

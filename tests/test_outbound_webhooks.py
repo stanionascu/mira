@@ -102,6 +102,14 @@ class TestFormatDetection:
     def test_discord_lookalike_host_is_not_slack(self):
         assert nf.detect_format("https://evildiscord.com/api/webhooks/1/t/slack") == "generic"
 
+    def test_googlechat(self):
+        url = "https://chat.googleapis.com/v1/spaces/AAAA/messages?key=K&token=T"
+        assert nf.detect_format(url) == "googlechat"
+
+    def test_googlechat_lookalike_host_is_not_googlechat(self):
+        assert nf.detect_format("https://chat.googleapis.com.evil.test/x") == "generic"
+        assert nf.detect_format("https://evilchat.googleapis.com/x") == "generic"
+
     def test_mask_hides_middle(self):
         masked = nf.mask_url("https://hooks.slack.com/services/T0/B0/abcd1234")
         assert masked == "https://hooks.slack.com/…1234"
@@ -125,6 +133,32 @@ class TestRender:
         assert body["event"] == nf.INDEXING_COMPLETED
         assert body["data"] == data
         assert "timestamp" in body
+
+    def test_googlechat_card_shape(self):
+        data = nf.sample_data(nf.REVIEW_COMPLETED)
+        body = nf.render(nf.REVIEW_COMPLETED, data, "googlechat")
+        assert "text" in body
+        (card_wrapper,) = body["cardsV2"]
+        assert card_wrapper["cardId"] == f"mira-{nf.REVIEW_COMPLETED}"
+        card = card_wrapper["card"]
+        assert "Mira reviewed" in card["header"]["title"]
+        assert card["header"]["subtitle"] == "octocat/hello-world"
+        (section,) = card["sections"]
+        paragraph, buttons = section["widgets"]
+        assert "comment(s)" in paragraph["textParagraph"]["text"]
+        (button,) = buttons["buttonList"]["buttons"]
+        assert button["text"] == "View PR"
+        assert (
+            button["onClick"]["openLink"]["url"] == "https://github.com/octocat/hello-world/pull/42"
+        )
+
+    def test_googlechat_indexing_card_has_no_button(self):
+        data = nf.sample_data(nf.INDEXING_COMPLETED)
+        body = nf.render(nf.INDEXING_COMPLETED, data, "googlechat")
+        (card_wrapper,) = body["cardsV2"]
+        (section,) = card_wrapper["card"]["sections"]
+        assert len(section["widgets"]) == 1
+        assert "textParagraph" in section["widgets"][0]
 
 
 # ── Delivery / dispatch ──────────────────────────────────────────────────────
