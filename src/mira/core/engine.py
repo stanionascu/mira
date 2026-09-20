@@ -705,14 +705,16 @@ class ReviewEngine:
                 )
 
         team_conventions = ""
-        try:
-            from mira.dashboard.api import _app_db
+        # Light mode reviews the diff alone — skip the conventions lookup.
+        if not self.config.review.light_mode:
+            try:
+                from mira.dashboard.api import _app_db
 
-            repo_record = _app_db.get_repo(pr_info.owner, pr_info.repo)
-            if repo_record and repo_record.conventions:
-                team_conventions = repo_record.conventions
-        except Exception:
-            pass
+                repo_record = _app_db.get_repo(pr_info.owner, pr_info.repo)
+                if repo_record and repo_record.conventions:
+                    team_conventions = repo_record.conventions
+            except Exception:
+                pass
 
         # Cross-PR overlap detection runs alongside the main review — it only
         # needs the diff + GitHub, not the review output. Skipped when the
@@ -1155,7 +1157,9 @@ class ReviewEngine:
                 return None
 
         async def _build_context() -> str:
-            if not self.config.review.code_context:
+            # Light mode reviews the diff alone: skip the index/JIT/doc/
+            # cross-repo lookups entirely (no I/O, no prompt bytes).
+            if self.config.review.light_mode or not self.config.review.code_context:
                 return ""
             try:
                 pr_info = getattr(self, "_pr_info", None)
@@ -1300,9 +1304,11 @@ class ReviewEngine:
 
         learned_rules: list[str] = []
         custom_rules: list[dict[str, str]] = []
+        # Light mode reviews the diff alone — learned/custom rules stay unread.
+        _light = self.config.review.light_mode
         try:
             pr_info = getattr(self, "_pr_info", None)
-            if pr_info is not None:
+            if pr_info is not None and not _light:
                 _rules_store = IndexStore.open(
                     pr_info.owner, pr_info.repo, platform=pr_info.platform
                 )
@@ -1330,6 +1336,10 @@ class ReviewEngine:
 
         valid_paths = {f.path for f in filtered}
         base_existing = list(existing_comments) if existing_comments else []
+        if _light:
+            # Light mode: no open-thread context — the model judges the diff
+            # alone (deterministic open-thread dedup below still applies).
+            base_existing = []
         semaphore = _asyncio.Semaphore(self.config.review.max_concurrent_chunks)
         audit: list[dict] = []
 
@@ -1359,8 +1369,8 @@ class ReviewEngine:
                         custom_rules=custom_rules or None,
                         file_history=chunk_history or None,
                         review_round=review_round,
-                        resolved_threads=resolved_threads,
-                        team_conventions=team_conventions,
+                        resolved_threads=None if _light else resolved_threads,
+                        team_conventions="" if _light else team_conventions,
                     )
 
                     def _parse(raw: str) -> tuple[list[ReviewComment], list[KeyIssue], str]:
@@ -1605,7 +1615,8 @@ class ReviewEngine:
         # Self-critique catches confident-but-wrong claims that the noise
         # filter can't, since confidence scores are LLM-generated too. Pass
         # the team's documented preferences so the critic doesn't strip
-        # findings that enforce them as "style nits".
+        # findings that enforce them as "style nits" — except in light mode,
+        # where the critic judges the draft comments and hunks alone.
         if final_comments and self.config.review.self_critique:
             # A dependency finding can land on a manifest that lost the size
             # cull and so isn't in `filtered`. The critic grades on the hunk
@@ -1617,6 +1628,8 @@ class ReviewEngine:
                 final_comments = await self_critique(
                     self.llm,
                     final_comments,
+                    # In light mode the rule reads above are skipped, so both
+                    # arrive as None and the critic sees comments + hunks only.
                     learned_rules=learned_rules or None,
                     custom_rules=custom_rules or None,
                     indexing_llm=self.indexing_llm,
