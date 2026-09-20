@@ -312,6 +312,14 @@ class OpenAICompatibleProvider:
         if field and self.prompt_cache_key:
             body[field] = self.prompt_cache_key
 
+    def _log_usage(self, prompt: int, completion: int) -> None:
+        logger.debug(
+            "llm usage model=%s prompt=%d completion=%d",
+            self.config.model,
+            prompt,
+            completion,
+        )
+
     def _account_usage(self, data: dict) -> None:
         """Accumulate token counts. Default: chat/completions key names.
 
@@ -320,8 +328,11 @@ class OpenAICompatibleProvider:
         """
         usage = data.get("usage")
         if usage:
-            self.total_prompt_tokens += usage.get("prompt_tokens", 0)
-            self.total_completion_tokens += usage.get("completion_tokens", 0)
+            prompt = usage.get("prompt_tokens", 0)
+            completion = usage.get("completion_tokens", 0)
+            self.total_prompt_tokens += prompt
+            self.total_completion_tokens += completion
+            self._log_usage(prompt, completion)
 
     @staticmethod
     def _handle_error(resp: httpx.Response) -> None:

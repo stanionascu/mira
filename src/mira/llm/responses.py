@@ -194,8 +194,11 @@ class ResponsesProvider(OpenAICompatibleProvider):
         """
         usage = data.get("usage")
         if usage:
-            self.total_prompt_tokens += usage.get("input_tokens", 0)
-            self.total_completion_tokens += usage.get("output_tokens", 0)
+            prompt = usage.get("input_tokens", 0)
+            completion = usage.get("output_tokens", 0)
+            self.total_prompt_tokens += prompt
+            self.total_completion_tokens += completion
+            self._log_usage(prompt, completion)
 
     # ── Internal LLM calls (retry-decorated by base class) ──────────
 

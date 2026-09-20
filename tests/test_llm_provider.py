@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -96,6 +97,27 @@ class TestComplete:
         assert result == "hello"
         assert provider.total_prompt_tokens == 10
         assert provider.total_completion_tokens == 5
+
+    @pytest.mark.asyncio
+    async def test_completion_logs_per_call_usage_at_debug(self, caplog):
+        config = LLMConfig(model="test-model")
+        provider = LLMProvider(config)
+
+        mock_resp = _mock_httpx_response(
+            _make_response_json("hello", {"prompt_tokens": 10, "completion_tokens": 5})
+        )
+
+        with patch("mira.llm.provider.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.post = AsyncMock(return_value=mock_resp)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            with caplog.at_level(logging.DEBUG, logger="mira.llm.base"):
+                await provider.complete([{"role": "user", "content": "hi"}])
+
+        assert "llm usage model=test-model prompt=10 completion=5" in caplog.text
 
     @pytest.mark.asyncio
     async def test_json_mode_passes_response_format(self):
