@@ -5,6 +5,7 @@
 # Unset keeps each command's default (serve: info, review: warning);
 # --verbose always forces debug. In a per-repo file this only affects
 # `mira review` runs — a running server reads it from its deployment config.
+# MIRA_LOG_LEVEL env var fills in when this is unset (handy for Docker).
 # log_level: info
 
 llm:

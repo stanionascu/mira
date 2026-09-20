@@ -329,6 +329,21 @@ class TestLogLevel:
         with pytest.raises(ConfigError, match="Invalid log_level"):
             load_config(config_file)
 
+    def test_env_fills_when_file_silent(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv("MIRA_LOG_LEVEL", "debug")
+        assert load_config().log_level == "DEBUG"
+
+    def test_file_beats_env(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        config_file = tmp_path / "mira.yaml"
+        config_file.write_text("log_level: error\n")
+        monkeypatch.setenv("MIRA_LOG_LEVEL", "debug")
+        assert load_config(config_file).log_level == "ERROR"
+
+    def test_invalid_env_rejected(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv("MIRA_LOG_LEVEL", "verbose")
+        with pytest.raises(ConfigError, match="Invalid log_level"):
+            load_config()
+
     def test_resolve_verbose_wins(self):
         assert resolve_log_level(True, "ERROR", logging.INFO) == logging.DEBUG
 

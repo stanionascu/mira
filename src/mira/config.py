@@ -335,6 +335,7 @@ class MiraConfig(BaseModel):
     # Process log level (debug/info/warning/error/critical, case-insensitive).
     # Unset keeps each command's default (serve: info, review: warning).
     # Applied once at startup; --verbose always forces debug.
+    # MIRA_LOG_LEVEL env var fills in when no file or override sets it.
     log_level: str | None = None
 
     @field_validator("log_level")
@@ -490,7 +491,7 @@ def load_config(
       4. Per-repo `.mira.yaml` (auto-discovered by walking up from cwd, OR
          the explicit `config_path` if passed).
       5. Caller-supplied `overrides` dict.
-      6. `DATABASE_URL` / `MIRA_MODEL` env-var fallbacks.
+      6. `DATABASE_URL` / `MIRA_MODEL` / `MIRA_LOG_LEVEL` env-var fallbacks.
     """
     data: dict[str, Any] = _deep_merge({}, _global_defaults)
 
@@ -539,6 +540,12 @@ def load_config(
         data["llm"] = {"model": env_model}
     elif env_model and "model" not in data.get("llm", {}):
         data.setdefault("llm", {})["model"] = env_model
+
+    # Respect MIRA_LOG_LEVEL env var as a fallback when not set via file
+    # or overrides. Validated like the file value, so a typo fails fast.
+    env_log_level = os.environ.get("MIRA_LOG_LEVEL")
+    if env_log_level and "log_level" not in data:
+        data["log_level"] = env_log_level
 
     try:
         return MiraConfig.model_validate(data)
