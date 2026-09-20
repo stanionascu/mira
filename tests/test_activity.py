@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from mira.core.review_status import ReviewTracker
 from mira.dashboard import api
 from mira.dashboard.db import AppDatabase
 from mira.dashboard.routers import core
@@ -105,3 +106,55 @@ def test_search_ands_multiple_terms(patched_db: AppDatabase):
     # "security" matches PRs 1 and 7; adding "web" narrows to just PR 1.
     out = core.list_activity(q="security web")
     assert [e.pr_number for e in out.events] == [1]
+
+
+@pytest.fixture
+def fresh_tracker(monkeypatch: pytest.MonkeyPatch) -> ReviewTracker:
+    """Isolate the module-global review tracker for in-progress tests."""
+    import mira.core.review_status as review_status
+
+    tracker = ReviewTracker()
+    monkeypatch.setattr(review_status, "tracker", tracker)
+    return tracker
+
+
+def test_in_progress_empty_by_default(patched_db: AppDatabase, fresh_tracker: ReviewTracker):
+    _seed(patched_db)
+    out = core.list_activity()
+    assert out.in_progress == []
+
+
+def test_in_progress_lists_active_reviews(patched_db: AppDatabase, fresh_tracker: ReviewTracker):
+    _seed(patched_db)
+    assert fresh_tracker.try_start(
+        "acme/web", 9, "New checkout flow", "https://github.com/acme/web/pull/9"
+    )
+    out = core.list_activity()
+    assert [(j.repo, j.pr_number) for j in out.in_progress] == [("web", 9)]
+    job = out.in_progress[0]
+    assert job.owner == "acme"
+    assert job.pr_title == "New checkout flow"
+    assert job.pr_url == "https://github.com/acme/web/pull/9"
+    assert job.started_at > 0
+    # Persisted events are untouched by the in-progress list.
+    assert len(out.events) == 3
+
+
+def test_in_progress_honors_repo_and_search_filters(
+    patched_db: AppDatabase, fresh_tracker: ReviewTracker
+):
+    _seed(patched_db)
+    fresh_tracker.try_start("acme/web", 9, "New checkout flow", "")
+    fresh_tracker.try_start("acme/api", 10, "Rotate signing keys", "")
+
+    assert [j.pr_number for j in core.list_activity(repo="acme/api").in_progress] == [10]
+    assert [j.pr_number for j in core.list_activity(q="checkout").in_progress] == [9]
+    assert [j.pr_number for j in core.list_activity(q="checkout api").in_progress] == []
+
+
+def test_in_progress_drops_completed_reviews(patched_db: AppDatabase, fresh_tracker: ReviewTracker):
+    _seed(patched_db)
+    fresh_tracker.try_start("acme/web", 9, "New checkout flow", "")
+    assert len(core.list_activity().in_progress) == 1
+    fresh_tracker.complete("acme/web", 9)
+    assert core.list_activity().in_progress == []

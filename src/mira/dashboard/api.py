@@ -209,9 +209,21 @@ class ActivityEventModel(ReviewEventModel):
     author_avatar_url: str = ""
 
 
+class ReviewStatusModel(BaseModel):
+    """An in-flight PR review from the in-memory review tracker."""
+
+    owner: str
+    repo: str
+    pr_number: int
+    pr_title: str
+    pr_url: str
+    started_at: float
+
+
 class ActivityResponse(BaseModel):
     events: list[ActivityEventModel]
     repos: list[str]
+    in_progress: list[ReviewStatusModel] = []
 
 
 class ReviewCommentModel(BaseModel):

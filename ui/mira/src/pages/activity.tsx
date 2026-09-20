@@ -48,6 +48,7 @@ import {
   type ActivityEventModel,
   type ActivityReviewModel,
   type PRReplyModel,
+  type ReviewStatusModel,
 } from "@/lib/api"
 import { useAsync, useDocumentTitle } from "@/lib/hooks"
 import { cn } from "@/lib/utils"
@@ -236,6 +237,16 @@ function formatTimestamp(epochSeconds: number) {
   return new Date(epochSeconds * 1000).toLocaleString()
 }
 
+function formatElapsed(epochSeconds: number) {
+  const seconds = Math.floor(Date.now() / 1000 - epochSeconds)
+  if (seconds < 60) return "just started"
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h`
+  return `${Math.floor(hours / 24)}d`
+}
+
 function plural(n: number, word: string) {
   return `${n} ${word}${n === 1 ? "" : "s"}`
 }
@@ -397,6 +408,15 @@ export function ActivityPage() {
   const events = useMemo(() => activity?.events ?? [], [activity?.events])
   // Keep the repo list stable across searches: prefer the unfiltered list.
   const repos = useMemo(() => activity?.repos ?? [], [activity?.repos])
+  const inProgress: ReviewStatusModel[] = useMemo(
+    () => activity?.in_progress ?? [],
+    [activity?.in_progress],
+  )
+  // PR keys with an active review — badges the matching table rows.
+  const reviewingKeys = useMemo(
+    () => new Set(inProgress.map((j) => `${j.owner}/${j.repo}#${j.pr_number}`)),
+    [inProgress],
+  )
 
   const prs = useMemo(() => groupByPR(events), [events])
 
@@ -607,6 +627,44 @@ export function ActivityPage() {
         </Button>
       </div>
 
+      {/* In-progress strip — reviews claimed but not yet persisted. */}
+      {inProgress.length > 0 && (
+        <Card className="shrink-0 py-0">
+          <CardContent className="flex flex-col gap-1.5 p-3">
+            {inProgress.map((j) => (
+              <div
+                key={`${j.owner}/${j.repo}#${j.pr_number}`}
+                className="flex items-center gap-2 text-sm"
+              >
+                <span
+                  className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-sky-500"
+                  aria-hidden
+                />
+                <span className="shrink-0 font-mono text-xs text-muted-foreground">
+                  {j.owner}/{j.repo}
+                </span>
+                <a
+                  href={j.pr_url || undefined}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex min-w-0 items-center gap-1.5 font-medium hover:underline"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <span className="shrink-0">#{j.pr_number}</span>
+                  <span className="truncate font-normal text-muted-foreground">
+                    {j.pr_title || "Reviewing…"}
+                  </span>
+                  <ExternalLink className="h-3 w-3 shrink-0 text-muted-foreground" />
+                </a>
+                <span className="ml-auto shrink-0 text-xs tabular-nums text-muted-foreground">
+                  {formatElapsed(j.started_at)}
+                </span>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Table — one row per PR. Only this card scrolls; pagination pinned. */}
       <Card className="flex min-h-0 flex-1 flex-col overflow-hidden py-0">
         {loading ? (
@@ -672,6 +730,17 @@ export function ActivityPage() {
                           <span className="truncate text-muted-foreground">
                             {g.pr_title}
                           </span>
+                          {reviewingKeys.has(g.key) && (
+                            <Badge
+                              className={cn(
+                                PILL_RING,
+                                "shrink-0 border-transparent bg-sky-500/15 text-sky-700 ring-sky-500/30 dark:text-sky-400",
+                              )}
+                            >
+                              <span className="mr-1 h-1.5 w-1.5 animate-pulse rounded-full bg-sky-500" />
+                              Reviewing
+                            </Badge>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell className="tabular-nums">

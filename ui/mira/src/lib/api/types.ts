@@ -174,9 +174,19 @@ export interface ActivityEventModel extends ReviewEventModel {
   author_avatar_url: string
 }
 
+export interface ReviewStatusModel {
+  owner: string
+  repo: string
+  pr_number: number
+  pr_title: string
+  pr_url: string
+  started_at: number
+}
+
 export interface ActivityResponse {
   events: ActivityEventModel[]
   repos: string[]
+  in_progress: ReviewStatusModel[]
 }
 
 export interface ReviewCommentModel {

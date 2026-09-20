@@ -16,6 +16,7 @@ from mira.dashboard.api import (
     IndexStatusModel,
     OrgStatsModel,
     ReviewStatsModel,
+    ReviewStatusModel,
     TimeSeriesPoint,
     _open_relationships,
     _period_to_since,
@@ -176,7 +177,36 @@ def list_activity(limit: int = 200, repo: str = "", q: str = "") -> ActivityResp
             logger.warning("Failed to read activity for %s", slug, exc_info=True)
 
     events.sort(key=lambda ev: ev.created_at, reverse=True)
-    return ActivityResponse(events=events[:limit], repos=repo_slugs)
+
+    # In-flight reviews from the in-memory tracker (not yet persisted as
+    # events). Same repo/search filters so the strip matches the table.
+    from mira.core.review_status import tracker as review_tracker
+
+    in_progress: list[ReviewStatusModel] = []
+    for job in review_tracker.get_active():
+        owner, slash, name = job.repo.partition("/")
+        if not slash:
+            continue
+        slug = job.repo
+        if repo and slug != repo:
+            continue
+        if terms:
+            haystack = f"{job.pr_title} #{job.pr_number} {slug}".lower()
+            if not all(t in haystack for t in terms):
+                continue
+        in_progress.append(
+            ReviewStatusModel(
+                owner=owner,
+                repo=name,
+                pr_number=job.pr_number,
+                pr_title=job.pr_title,
+                pr_url=job.pr_url,
+                started_at=job.started_at,
+            )
+        )
+    in_progress.sort(key=lambda j: j.started_at, reverse=True)
+
+    return ActivityResponse(events=events[:limit], repos=repo_slugs, in_progress=in_progress)
 
 
 @router.get("/api/stats", response_model=OrgStatsModel)
