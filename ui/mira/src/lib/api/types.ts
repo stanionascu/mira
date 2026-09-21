@@ -162,6 +162,9 @@ export interface ReviewEventModel {
   files_reviewed: number
   lines_changed: number
   tokens_used: number
+  prompt_tokens: number
+  completion_tokens: number
+  cached_tokens: number
   duration_ms: number
   categories: string
   created_at: number
@@ -239,6 +242,9 @@ export interface ReviewStatsModel {
   total_files_reviewed: number
   total_lines_changed: number
   total_tokens: number
+  total_prompt_tokens: number
+  total_completion_tokens: number
+  total_cached_tokens: number
   avg_duration_ms: number
   categories: Record<string, number>
   avg_comments_per_pr: number

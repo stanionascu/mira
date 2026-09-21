@@ -113,6 +113,9 @@ type PRGroup = {
   totalWarnings: number
   totalSuggestions: number
   totalTokens: number
+  totalPrompt: number
+  totalCompletion: number
+  totalCached: number
   totalDurationMs: number
 }
 
@@ -137,6 +140,9 @@ function groupByPR(events: ActivityEventModel[]): PRGroup[] {
     let totalWarnings = 0
     let totalSuggestions = 0
     let totalTokens = 0
+    let totalPrompt = 0
+    let totalCompletion = 0
+    let totalCached = 0
     let totalDurationMs = 0
     for (const r of reviews) {
       splitCategories(r.categories).forEach((c) => cats.add(c))
@@ -145,6 +151,9 @@ function groupByPR(events: ActivityEventModel[]): PRGroup[] {
       totalWarnings += r.warnings
       totalSuggestions += r.suggestions
       totalTokens += r.tokens_used
+      totalPrompt += r.prompt_tokens
+      totalCompletion += r.completion_tokens
+      totalCached += r.cached_tokens
       totalDurationMs += r.duration_ms
     }
     groups.push({
@@ -167,6 +176,9 @@ function groupByPR(events: ActivityEventModel[]): PRGroup[] {
       totalWarnings,
       totalSuggestions,
       totalTokens,
+      totalPrompt,
+      totalCompletion,
+      totalCached,
       totalDurationMs,
     })
   }
@@ -908,6 +920,9 @@ export function ActivityPage() {
                 <Stat label="Files reviewed" value={selected.latest.files_reviewed} />
                 <Stat label="Lines changed" value={selected.latest.lines_changed.toLocaleString()} />
                 <Stat label="Tokens used" value={selected.totalTokens.toLocaleString()} />
+                <Stat label="Input tokens" value={selected.totalPrompt.toLocaleString()} />
+                <Stat label="Output tokens" value={selected.totalCompletion.toLocaleString()} />
+                <Stat label="Cached tokens" value={selected.totalCached.toLocaleString()} />
                 <Stat label="Total time" value={`${(selected.totalDurationMs / 1000).toFixed(1)}s`} />
               </dl>
 
@@ -1146,7 +1161,16 @@ function ReviewEntry({
 
       <div className="mt-2 text-xs text-muted-foreground">
         {plural(review.comments_posted, "comment")} · {review.lines_changed.toLocaleString()} lines ·{" "}
-        {review.tokens_used.toLocaleString()} tokens · {(review.duration_ms / 1000).toFixed(1)}s
+        {review.tokens_used.toLocaleString()} tokens
+        {review.prompt_tokens + review.completion_tokens > 0 && (
+          <>
+            {" "}
+            (in {review.prompt_tokens.toLocaleString()} · out{" "}
+            {review.completion_tokens.toLocaleString()} · cached{" "}
+            {review.cached_tokens.toLocaleString()})
+          </>
+        )}{" "}
+        · {(review.duration_ms / 1000).toFixed(1)}s
       </div>
     </>
   )

@@ -19,6 +19,9 @@ export const statsApi = {
         suggestions: number
         lines_changed: number
         tokens_used: number
+        prompt_tokens: number
+        completion_tokens: number
+        cached_tokens: number
         categories: Record<string, number>
       }[]
     >(`/api/stats/timeseries?period=${period}`),

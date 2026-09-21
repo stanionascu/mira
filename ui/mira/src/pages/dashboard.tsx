@@ -209,6 +209,13 @@ export function DashboardPage() {
                 </div>
                 <div className="text-muted-foreground">
                   {rs ? fmt(rs.total_tokens) : "0"} tokens used
+                  {rs && rs.total_prompt_tokens + rs.total_completion_tokens > 0 && (
+                    <>
+                      {" "}
+                      (in {fmt(rs.total_prompt_tokens)} · out {fmt(rs.total_completion_tokens)} ·{" "}
+                      cached {fmt(rs.total_cached_tokens)})
+                    </>
+                  )}
                 </div>
               </>
             )}
@@ -409,6 +416,9 @@ type TSPoint = {
   suggestions: number
   lines_changed: number
   tokens_used: number
+  prompt_tokens: number
+  completion_tokens: number
+  cached_tokens: number
   categories: Record<string, number>
 }
 
@@ -444,33 +454,56 @@ function ReviewsChart({ data, useBars }: { data: TSPoint[]; useBars: boolean }) 
 
 // ── Tokens chart ──
 
+// Stacked input (fresh) / cached / output. `unattributed` keeps pre-split
+// history visible: rows recorded before the split carry only tokens_used.
 const tokensConfig = {
-  tokens_used: { label: "Tokens", color: "var(--chart-3)" },
+  input: { label: "Input", color: "var(--chart-1)" },
+  cached_tokens: { label: "Cached", color: "var(--chart-2)" },
+  completion_tokens: { label: "Output", color: "var(--chart-3)" },
+  unattributed: { label: "Unattributed", color: "var(--chart-4)" },
 } satisfies ChartConfig
 
+type TokenPoint = TSPoint & { input: number; unattributed: number }
+
 function TokensChart({ data, useBars }: { data: TSPoint[]; useBars: boolean }) {
+  const stacked: TokenPoint[] = data.map((p) => ({
+    ...p,
+    input: Math.max(0, p.prompt_tokens - p.cached_tokens),
+    unattributed: Math.max(0, p.tokens_used - p.prompt_tokens - p.completion_tokens),
+  }))
+  const hasUnattributed = stacked.some((p) => p.unattributed > 0)
   const xAxis = (
     <XAxis dataKey="date" tickLine={false} axisLine={false} tickMargin={8} tickFormatter={formatDate} />
   )
   if (useBars) {
     return (
       <ChartContainer config={tokensConfig} className="h-[250px] w-full">
-        <BarChart data={data}>
+        <BarChart data={stacked}>
           <CartesianGrid vertical={false} />
           {xAxis}
           <ChartTooltip content={<ChartTooltipContent />} />
-          <Bar dataKey="tokens_used" fill="var(--color-tokens_used)" radius={[4, 4, 0, 0]} />
+          <Bar dataKey="input" stackId="tokens" fill="var(--color-input)" radius={[0, 0, 0, 0]} />
+          <Bar dataKey="cached_tokens" stackId="tokens" fill="var(--color-cached_tokens)" radius={[0, 0, 0, 0]} />
+          <Bar dataKey="completion_tokens" stackId="tokens" fill="var(--color-completion_tokens)" radius={hasUnattributed ? [0, 0, 0, 0] : [4, 4, 0, 0]} />
+          {hasUnattributed && (
+            <Bar dataKey="unattributed" stackId="tokens" fill="var(--color-unattributed)" radius={[4, 4, 0, 0]} />
+          )}
         </BarChart>
       </ChartContainer>
     )
   }
   return (
     <ChartContainer config={tokensConfig} className="h-[250px] w-full">
-      <AreaChart data={data}>
+      <AreaChart data={stacked}>
         <CartesianGrid vertical={false} />
         {xAxis}
         <ChartTooltip content={<ChartTooltipContent />} />
-        <Area type="monotone" dataKey="tokens_used" stroke="var(--color-tokens_used)" fill="var(--color-tokens_used)" fillOpacity={0.15} strokeWidth={2} />
+        <Area type="monotone" dataKey="input" stackId="tokens" stroke="var(--color-input)" fill="var(--color-input)" fillOpacity={0.15} strokeWidth={2} />
+        <Area type="monotone" dataKey="cached_tokens" stackId="tokens" stroke="var(--color-cached_tokens)" fill="var(--color-cached_tokens)" fillOpacity={0.15} strokeWidth={2} />
+        <Area type="monotone" dataKey="completion_tokens" stackId="tokens" stroke="var(--color-completion_tokens)" fill="var(--color-completion_tokens)" fillOpacity={0.15} strokeWidth={2} />
+        {hasUnattributed && (
+          <Area type="monotone" dataKey="unattributed" stackId="tokens" stroke="var(--color-unattributed)" fill="var(--color-unattributed)" fillOpacity={0.15} strokeWidth={2} />
+        )}
       </AreaChart>
     </ChartContainer>
   )
