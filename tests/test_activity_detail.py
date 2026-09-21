@@ -127,3 +127,86 @@ def test_activity_detail_404_for_unknown_pr(patched_db: AppDatabase):
     with pytest.raises(HTTPException) as exc:
         api.get_activity_detail("acme", "web", 999)
     assert exc.value.status_code == 404
+
+
+def test_token_split_round_trips_to_detail_and_stats(patched_db: AppDatabase):
+    patched_db.register_repo("acme", "web")
+    store = IndexStore.open("acme", "web")
+    store.record_review(
+        pr_number=2,
+        pr_title="Split",
+        pr_url="https://github.com/acme/web/pull/2",
+        comments_posted=0,
+        blockers=0,
+        warnings=0,
+        tokens_used=150,
+        prompt_tokens=100,
+        completion_tokens=50,
+        cached_tokens=20,
+        created_at=400.0,
+    )
+    store.close()
+
+    detail = api.get_activity_detail("acme", "web", 2)
+    (review,) = detail.reviews
+    assert (review.prompt_tokens, review.completion_tokens, review.cached_tokens) == (100, 50, 20)
+
+    store = IndexStore.open("acme", "web")
+    try:
+        stats = store.get_review_stats()
+    finally:
+        store.close()
+    assert stats["total_prompt_tokens"] == 100
+    assert stats["total_completion_tokens"] == 50
+    assert stats["total_cached_tokens"] == 20
+
+
+def test_token_split_columns_migrated_on_open(patched_db: AppDatabase, tmp_path: Path):
+    import sqlite3
+
+    patched_db.register_repo("acme", "web")
+    store = IndexStore.open("acme", "web")
+    store.record_review(
+        pr_number=3,
+        pr_title="Legacy",
+        pr_url="https://github.com/acme/web/pull/3",
+        comments_posted=0,
+        blockers=0,
+        warnings=0,
+        tokens_used=90,
+        created_at=500.0,
+    )
+    store.close()
+
+    # Simulate a pre-split database by dropping the new columns.
+    db_path = tmp_path / "acme" / "web.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute("ALTER TABLE review_events DROP COLUMN prompt_tokens")
+    conn.execute("ALTER TABLE review_events DROP COLUMN completion_tokens")
+    conn.execute("ALTER TABLE review_events DROP COLUMN cached_tokens")
+    conn.commit()
+    conn.close()
+
+    # Reopening migrates; the legacy row reads back with a zero split.
+    store = IndexStore.open("acme", "web")
+    try:
+        (legacy,) = store.list_review_events_for_pr(3)
+        assert legacy.tokens_used == 90
+        assert (legacy.prompt_tokens, legacy.completion_tokens, legacy.cached_tokens) == (0, 0, 0)
+        store.record_review(
+            pr_number=3,
+            pr_title="Legacy",
+            pr_url="https://github.com/acme/web/pull/3",
+            comments_posted=0,
+            blockers=0,
+            warnings=0,
+            tokens_used=150,
+            prompt_tokens=100,
+            completion_tokens=50,
+            cached_tokens=20,
+            created_at=600.0,
+        )
+        rows = store.list_review_events_for_pr(3)
+        assert len(rows) == 2
+    finally:
+        store.close()

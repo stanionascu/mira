@@ -162,6 +162,9 @@ def list_activity(limit: int = 200, repo: str = "", q: str = "") -> ActivityResp
                             files_reviewed=e.files_reviewed,
                             lines_changed=e.lines_changed,
                             tokens_used=e.tokens_used,
+                            prompt_tokens=e.prompt_tokens,
+                            completion_tokens=e.completion_tokens,
+                            cached_tokens=e.cached_tokens,
                             duration_ms=e.duration_ms,
                             categories=e.categories,
                             created_at=e.created_at,
@@ -226,6 +229,9 @@ def get_org_stats(period: str = "") -> OrgStatsModel:
         "total_files_reviewed": 0,
         "total_lines_changed": 0,
         "total_tokens": 0,
+        "total_prompt_tokens": 0,
+        "total_completion_tokens": 0,
+        "total_cached_tokens": 0,
         "avg_duration_ms": 0,
         "categories": {},
         "avg_comments_per_pr": 0.0,
@@ -248,6 +254,9 @@ def get_org_stats(period: str = "") -> OrgStatsModel:
             agg_stats["total_files_reviewed"] += stats["total_files_reviewed"]
             agg_stats["total_lines_changed"] += stats["total_lines_changed"]
             agg_stats["total_tokens"] += stats["total_tokens"]
+            agg_stats["total_prompt_tokens"] += stats.get("total_prompt_tokens", 0)
+            agg_stats["total_completion_tokens"] += stats.get("total_completion_tokens", 0)
+            agg_stats["total_cached_tokens"] += stats.get("total_cached_tokens", 0)
             for cat, cnt in stats.get("categories", {}).items():
                 agg_stats["categories"][cat] = agg_stats["categories"].get(cat, 0) + cnt
             if stats["total_reviews"] > 0:
@@ -303,6 +312,9 @@ def get_timeseries(period: str = "day") -> list[TimeSeriesPoint]:
                         "suggestions": e.suggestions,
                         "lines": e.lines_changed,
                         "tokens": e.tokens_used,
+                        "prompt_tokens": e.prompt_tokens,
+                        "completion_tokens": e.completion_tokens,
+                        "cached_tokens": e.cached_tokens,
                         "categories": e.categories,
                     }
                 )
@@ -325,6 +337,9 @@ def get_timeseries(period: str = "day") -> list[TimeSeriesPoint]:
             "suggestions": 0,
             "lines_changed": 0,
             "tokens_used": 0,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "cached_tokens": 0,
             "categories": {},
         }
     )
@@ -346,6 +361,9 @@ def get_timeseries(period: str = "day") -> list[TimeSeriesPoint]:
         b["suggestions"] += ev["suggestions"]
         b["lines_changed"] += ev["lines"]
         b["tokens_used"] += ev["tokens"]
+        b["prompt_tokens"] += ev["prompt_tokens"]
+        b["completion_tokens"] += ev["completion_tokens"]
+        b["cached_tokens"] += ev["cached_tokens"]
         for c in (ev["categories"] or "").split(","):
             c = c.strip()
             if c:

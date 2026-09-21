@@ -197,6 +197,9 @@ class ReviewEventModel(BaseModel):
     files_reviewed: int
     lines_changed: int
     tokens_used: int
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    cached_tokens: int = 0
     duration_ms: int
     categories: str
     created_at: float
@@ -278,6 +281,9 @@ class ReviewStatsModel(BaseModel):
     total_files_reviewed: int
     total_lines_changed: int
     total_tokens: int
+    total_prompt_tokens: int = 0
+    total_completion_tokens: int = 0
+    total_cached_tokens: int = 0
     avg_duration_ms: int
     categories: dict[str, int] = {}
     avg_comments_per_pr: float = 0.0
@@ -1287,6 +1293,9 @@ class TimeSeriesPoint(BaseModel):
     suggestions: int = 0
     lines_changed: int = 0
     tokens_used: int = 0
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    cached_tokens: int = 0
     categories: dict[str, int] = {}
 
 
@@ -1353,6 +1362,9 @@ def get_activity_detail(owner: str, repo: str, pr_number: int) -> ActivityDetail
                 files_reviewed=e.files_reviewed,
                 lines_changed=e.lines_changed,
                 tokens_used=e.tokens_used,
+                prompt_tokens=e.prompt_tokens,
+                completion_tokens=e.completion_tokens,
+                cached_tokens=e.cached_tokens,
                 duration_ms=e.duration_ms,
                 categories=e.categories,
                 created_at=e.created_at,

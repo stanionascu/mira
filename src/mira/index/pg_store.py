@@ -108,6 +108,9 @@ CREATE TABLE IF NOT EXISTS review_events (
     files_reviewed INTEGER NOT NULL DEFAULT 0,
     lines_changed INTEGER NOT NULL DEFAULT 0,
     tokens_used INTEGER NOT NULL DEFAULT 0,
+    prompt_tokens INTEGER NOT NULL DEFAULT 0,
+    completion_tokens INTEGER NOT NULL DEFAULT 0,
+    cached_tokens INTEGER NOT NULL DEFAULT 0,
     duration_ms INTEGER NOT NULL DEFAULT 0,
     categories TEXT NOT NULL DEFAULT '',
     author TEXT NOT NULL DEFAULT '',
@@ -278,6 +281,11 @@ def _get_conn(url: str) -> Any:
                     cur.execute(
                         f"ALTER TABLE review_events ADD COLUMN IF NOT EXISTS {col} "
                         "TEXT NOT NULL DEFAULT ''"
+                    )
+                for col in ("prompt_tokens", "completion_tokens", "cached_tokens"):
+                    cur.execute(
+                        f"ALTER TABLE review_events ADD COLUMN IF NOT EXISTS {col} "
+                        "INTEGER NOT NULL DEFAULT 0"
                     )
                 cur.execute(
                     "ALTER TABLE learned_rules ADD COLUMN IF NOT EXISTS status "
@@ -788,6 +796,9 @@ class PgIndexStore(_StoreSharedMixin):
         files_reviewed: int = 0,
         lines_changed: int = 0,
         tokens_used: int = 0,
+        prompt_tokens: int = 0,
+        completion_tokens: int = 0,
+        cached_tokens: int = 0,
         duration_ms: int = 0,
         categories: str = "",
         created_at: float | None = None,
@@ -800,9 +811,10 @@ class PgIndexStore(_StoreSharedMixin):
             cur.execute(
                 "INSERT INTO review_events (owner, repo, pr_number, pr_title, pr_url, "
                 "comments_posted, blockers, warnings, suggestions, files_reviewed, "
-                "lines_changed, tokens_used, duration_ms, categories, author, "
+                "lines_changed, tokens_used, prompt_tokens, completion_tokens, "
+                "cached_tokens, duration_ms, categories, author, "
                 "author_avatar_url, reviewed_paths, created_at) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
                 "RETURNING id",
                 (
                     self._owner,
@@ -817,6 +829,9 @@ class PgIndexStore(_StoreSharedMixin):
                     files_reviewed,
                     lines_changed,
                     tokens_used,
+                    prompt_tokens,
+                    completion_tokens,
+                    cached_tokens,
                     duration_ms,
                     categories,
                     author,
@@ -844,6 +859,9 @@ class PgIndexStore(_StoreSharedMixin):
             author=author,
             author_avatar_url=author_avatar_url,
             reviewed_paths=reviewed_paths,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            cached_tokens=cached_tokens,
         )
 
     def upsert_pr_fingerprint(self, fp: PRFingerprint) -> None:
@@ -896,7 +914,8 @@ class PgIndexStore(_StoreSharedMixin):
         rows = self._fetchall(
             "SELECT id, pr_number, pr_title, pr_url, comments_posted, blockers, warnings, "
             "suggestions, files_reviewed, lines_changed, tokens_used, duration_ms, "
-            "categories, created_at, author, author_avatar_url, reviewed_paths "
+            "categories, created_at, author, author_avatar_url, reviewed_paths, "
+            "prompt_tokens, completion_tokens, cached_tokens "
             "FROM review_events WHERE owner=%s AND repo=%s "
             "ORDER BY created_at DESC LIMIT %s",
             (self._owner, self._repo, limit),
@@ -920,6 +939,9 @@ class PgIndexStore(_StoreSharedMixin):
                 author=r[14],
                 author_avatar_url=r[15],
                 reviewed_paths=r[16],
+                prompt_tokens=r[17],
+                completion_tokens=r[18],
+                cached_tokens=r[19],
             )
             for r in rows
         ]
@@ -928,7 +950,8 @@ class PgIndexStore(_StoreSharedMixin):
         rows = self._fetchall(
             "SELECT id, pr_number, pr_title, pr_url, comments_posted, blockers, warnings, "
             "suggestions, files_reviewed, lines_changed, tokens_used, duration_ms, "
-            "categories, created_at, author, author_avatar_url, reviewed_paths "
+            "categories, created_at, author, author_avatar_url, reviewed_paths, "
+            "prompt_tokens, completion_tokens, cached_tokens "
             "FROM review_events WHERE owner=%s AND repo=%s AND pr_number=%s "
             "ORDER BY created_at DESC",
             (self._owner, self._repo, pr_number),
@@ -952,6 +975,9 @@ class PgIndexStore(_StoreSharedMixin):
                 author=r[14],
                 author_avatar_url=r[15],
                 reviewed_paths=r[16],
+                prompt_tokens=r[17],
+                completion_tokens=r[18],
+                cached_tokens=r[19],
             )
             for r in rows
         ]
@@ -1098,7 +1124,9 @@ class PgIndexStore(_StoreSharedMixin):
             "SELECT COUNT(*), COALESCE(SUM(comments_posted),0), COALESCE(SUM(blockers),0), "
             "COALESCE(SUM(warnings),0), COALESCE(SUM(suggestions),0), "
             "COALESCE(SUM(files_reviewed),0), COALESCE(SUM(lines_changed),0), "
-            "COALESCE(SUM(tokens_used),0), COALESCE(AVG(duration_ms),0) "
+            "COALESCE(SUM(tokens_used),0), COALESCE(AVG(duration_ms),0), "
+            "COALESCE(SUM(prompt_tokens),0), COALESCE(SUM(completion_tokens),0), "
+            "COALESCE(SUM(cached_tokens),0) "
             f"FROM review_events WHERE owner=%s AND repo=%s{since_clause}",
             tuple(params),
         )
@@ -1128,6 +1156,9 @@ class PgIndexStore(_StoreSharedMixin):
             "total_lines_changed": row[6],
             "total_tokens": row[7],
             "avg_duration_ms": int(row[8]),
+            "total_prompt_tokens": row[9],
+            "total_completion_tokens": row[10],
+            "total_cached_tokens": row[11],
             "categories": cat_counts,
         }
 

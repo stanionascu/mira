@@ -83,6 +83,9 @@ CREATE TABLE IF NOT EXISTS review_events (
     files_reviewed INTEGER NOT NULL DEFAULT 0,
     lines_changed INTEGER NOT NULL DEFAULT 0,
     tokens_used INTEGER NOT NULL DEFAULT 0,
+    prompt_tokens INTEGER NOT NULL DEFAULT 0,
+    completion_tokens INTEGER NOT NULL DEFAULT 0,
+    cached_tokens INTEGER NOT NULL DEFAULT 0,
     duration_ms INTEGER NOT NULL DEFAULT 0,
     categories TEXT NOT NULL DEFAULT '',
     author_avatar_url TEXT NOT NULL DEFAULT '',
@@ -265,6 +268,9 @@ class ReviewEvent:
     created_at: float = 0.0
     author_avatar_url: str = ""
     reviewed_paths: str = ""  # JSON array of filenames reviewed this pass
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    cached_tokens: int = 0
 
 
 @dataclass
@@ -391,6 +397,12 @@ class IndexStore(_StoreSharedMixin):
             if col not in re_cols:
                 self._conn.execute(
                     f"ALTER TABLE review_events ADD COLUMN {col} TEXT NOT NULL DEFAULT ''"
+                )
+        # Token-split columns added post-schema (input/output/cached counts).
+        for col in ("prompt_tokens", "completion_tokens", "cached_tokens"):
+            if col not in re_cols:
+                self._conn.execute(
+                    f"ALTER TABLE review_events ADD COLUMN {col} INTEGER NOT NULL DEFAULT 0"
                 )
         feedback_cols = {
             r[1] for r in self._conn.execute("PRAGMA table_info(feedback_events)").fetchall()
@@ -672,6 +684,9 @@ class IndexStore(_StoreSharedMixin):
         files_reviewed: int = 0,
         lines_changed: int = 0,
         tokens_used: int = 0,
+        prompt_tokens: int = 0,
+        completion_tokens: int = 0,
+        cached_tokens: int = 0,
         duration_ms: int = 0,
         categories: str = "",
         created_at: float | None = None,
@@ -683,9 +698,10 @@ class IndexStore(_StoreSharedMixin):
         self._conn.execute(
             "INSERT INTO review_events "
             "(pr_number, pr_title, pr_url, author, comments_posted, blockers, warnings, "
-            "suggestions, files_reviewed, lines_changed, tokens_used, duration_ms, "
+            "suggestions, files_reviewed, lines_changed, tokens_used, prompt_tokens, "
+            "completion_tokens, cached_tokens, duration_ms, "
             "categories, author_avatar_url, reviewed_paths, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 pr_number,
                 pr_title,
@@ -698,6 +714,9 @@ class IndexStore(_StoreSharedMixin):
                 files_reviewed,
                 lines_changed,
                 tokens_used,
+                prompt_tokens,
+                completion_tokens,
+                cached_tokens,
                 duration_ms,
                 categories,
                 author_avatar_url,
@@ -725,13 +744,17 @@ class IndexStore(_StoreSharedMixin):
             created_at=now,
             author_avatar_url=author_avatar_url,
             reviewed_paths=reviewed_paths,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            cached_tokens=cached_tokens,
         )
 
     def list_review_events(self, limit: int = 100) -> list[ReviewEvent]:
         rows = self._conn.execute(
             "SELECT id, pr_number, pr_title, pr_url, author, comments_posted, blockers, warnings, "
             "suggestions, files_reviewed, lines_changed, tokens_used, duration_ms, "
-            "categories, created_at, author_avatar_url, reviewed_paths "
+            "categories, created_at, author_avatar_url, reviewed_paths, "
+            "prompt_tokens, completion_tokens, cached_tokens "
             "FROM review_events ORDER BY created_at DESC LIMIT ?",
             (limit,),
         ).fetchall()
@@ -754,6 +777,9 @@ class IndexStore(_StoreSharedMixin):
                 created_at=r[14],
                 author_avatar_url=r[15],
                 reviewed_paths=r[16],
+                prompt_tokens=r[17],
+                completion_tokens=r[18],
+                cached_tokens=r[19],
             )
             for r in rows
         ]
@@ -762,7 +788,8 @@ class IndexStore(_StoreSharedMixin):
         rows = self._conn.execute(
             "SELECT id, pr_number, pr_title, pr_url, author, comments_posted, blockers, warnings, "
             "suggestions, files_reviewed, lines_changed, tokens_used, duration_ms, "
-            "categories, created_at, author_avatar_url, reviewed_paths "
+            "categories, created_at, author_avatar_url, reviewed_paths, "
+            "prompt_tokens, completion_tokens, cached_tokens "
             "FROM review_events WHERE pr_number = ? ORDER BY created_at DESC",
             (pr_number,),
         ).fetchall()
@@ -785,6 +812,9 @@ class IndexStore(_StoreSharedMixin):
                 created_at=r[14],
                 author_avatar_url=r[15],
                 reviewed_paths=r[16],
+                prompt_tokens=r[17],
+                completion_tokens=r[18],
+                cached_tokens=r[19],
             )
             for r in rows
         ]
@@ -970,7 +1000,9 @@ class IndexStore(_StoreSharedMixin):
             "SELECT COUNT(*), COALESCE(SUM(comments_posted),0), COALESCE(SUM(blockers),0), "
             "COALESCE(SUM(warnings),0), COALESCE(SUM(suggestions),0), "
             "COALESCE(SUM(files_reviewed),0), COALESCE(SUM(lines_changed),0), "
-            "COALESCE(SUM(tokens_used),0), COALESCE(AVG(duration_ms),0) "
+            "COALESCE(SUM(tokens_used),0), COALESCE(AVG(duration_ms),0), "
+            "COALESCE(SUM(prompt_tokens),0), COALESCE(SUM(completion_tokens),0), "
+            "COALESCE(SUM(cached_tokens),0) "
             f"FROM review_events{where}",
             params,
         ).fetchone()
@@ -999,6 +1031,9 @@ class IndexStore(_StoreSharedMixin):
             "total_lines_changed": row[6],
             "total_tokens": row[7],
             "avg_duration_ms": int(row[8]),
+            "total_prompt_tokens": row[9],
+            "total_completion_tokens": row[10],
+            "total_cached_tokens": row[11],
             "categories": cat_counts,
         }
 
