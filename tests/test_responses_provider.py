@@ -607,13 +607,17 @@ class TestUsage:
         assert usage == {
             "prompt_tokens": 0,
             "completion_tokens": 0,
+            "cached_tokens": 0,
             "total_tokens": 0,
         }
 
     @pytest.mark.asyncio
     async def test_usage_accumulates(self, config: LLMConfig):
         provider = ResponsesProvider(config)
-        mock_data = _make_resp_text("result", _make_resp_usage(100, 50))
+        mock_data = _make_resp_text(
+            "result",
+            _make_resp_usage(100, 50) | {"input_tokens_details": {"cached_tokens": 20}},
+        )
         mock_resp = _mock_httpx_response(mock_data, 200)
         mock_client = _mock_client(mock_resp)
 
@@ -623,6 +627,7 @@ class TestUsage:
         usage = provider.usage
         assert usage["prompt_tokens"] == 100
         assert usage["completion_tokens"] == 50
+        assert usage["cached_tokens"] == 20
         assert usage["total_tokens"] == 150
 
 

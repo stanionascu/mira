@@ -564,7 +564,10 @@ class TestUsage:
 
         mock_client = MagicMock()
         mock_client.converse.side_effect = [
-            _mock_converse_response("r1", {"inputTokens": 100, "outputTokens": 50}),
+            _mock_converse_response(
+                "r1",
+                {"inputTokens": 100, "outputTokens": 50, "cacheReadInputTokens": 40},
+            ),
             _mock_converse_response("r2", {"inputTokens": 200, "outputTokens": 80}),
         ]
         mock_session = MagicMock()
@@ -578,5 +581,6 @@ class TestUsage:
         assert provider.usage == {
             "prompt_tokens": 300,
             "completion_tokens": 130,
+            "cached_tokens": 40,
             "total_tokens": 430,
         }

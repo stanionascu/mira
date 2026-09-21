@@ -196,9 +196,12 @@ class ResponsesProvider(OpenAICompatibleProvider):
         if usage:
             prompt = usage.get("input_tokens", 0)
             completion = usage.get("output_tokens", 0)
+            details = usage.get("input_tokens_details") or {}
+            cached = details.get("cached_tokens", 0)
             self.total_prompt_tokens += prompt
             self.total_completion_tokens += completion
-            self._log_usage(prompt, completion)
+            self.total_cached_tokens += cached
+            self._log_usage(prompt, completion, cached)
 
     # ── Internal LLM calls (retry-decorated by base class) ──────────
 

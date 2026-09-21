@@ -59,12 +59,14 @@ class CodexCLIProvider:
         self.config = config
         self.total_prompt_tokens = 0
         self.total_completion_tokens = 0
+        self.total_cached_tokens = 0
 
     @property
     def usage(self) -> dict[str, int]:
         return {
             "prompt_tokens": self.total_prompt_tokens,
             "completion_tokens": self.total_completion_tokens,
+            "cached_tokens": self.total_cached_tokens,
             "total_tokens": self.total_prompt_tokens + self.total_completion_tokens,
         }
 

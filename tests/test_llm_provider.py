@@ -104,7 +104,14 @@ class TestComplete:
         provider = LLMProvider(config)
 
         mock_resp = _mock_httpx_response(
-            _make_response_json("hello", {"prompt_tokens": 10, "completion_tokens": 5})
+            _make_response_json(
+                "hello",
+                {
+                    "prompt_tokens": 10,
+                    "completion_tokens": 5,
+                    "prompt_tokens_details": {"cached_tokens": 3},
+                },
+            )
         )
 
         with patch("mira.llm.provider.httpx.AsyncClient") as mock_client_cls:
@@ -117,7 +124,9 @@ class TestComplete:
             with caplog.at_level(logging.DEBUG, logger="mira.llm.base"):
                 await provider.complete([{"role": "user", "content": "hi"}])
 
-        assert "llm usage model=test-model prompt=10 completion=5" in caplog.text
+        assert "llm usage model=test-model prompt=10 completion=5 cached=3" in caplog.text
+        assert provider.total_cached_tokens == 3
+        assert provider.usage["cached_tokens"] == 3
 
     @pytest.mark.asyncio
     async def test_json_mode_passes_response_format(self):
@@ -518,10 +527,12 @@ class TestUsageProperty:
         provider = LLMProvider(config)
         provider.total_prompt_tokens = 100
         provider.total_completion_tokens = 50
+        provider.total_cached_tokens = 10
 
         usage = provider.usage
         assert usage["prompt_tokens"] == 100
         assert usage["completion_tokens"] == 50
+        assert usage["cached_tokens"] == 10
         assert usage["total_tokens"] == 150
 
 

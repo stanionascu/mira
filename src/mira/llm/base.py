@@ -216,6 +216,7 @@ class OpenAICompatibleProvider:
         self.profile = profiles.resolve(config.base_url)
         self.total_prompt_tokens = 0
         self.total_completion_tokens = 0
+        self.total_cached_tokens = 0
         self._no_forced_tool_choice: set[str] = set()
         self._no_reasoning: set[str] = set()
         # Stable id (e.g. per-PR) sent as the profile's cache-key field so
@@ -319,12 +320,13 @@ class OpenAICompatibleProvider:
         if field and self.prompt_cache_key:
             body[field] = self.prompt_cache_key
 
-    def _log_usage(self, prompt: int, completion: int) -> None:
+    def _log_usage(self, prompt: int, completion: int, cached: int) -> None:
         logger.debug(
-            "llm usage model=%s prompt=%d completion=%d",
+            "llm usage model=%s prompt=%d completion=%d cached=%d",
             self.config.model,
             prompt,
             completion,
+            cached,
         )
 
     def _account_usage(self, data: dict) -> None:
@@ -337,9 +339,12 @@ class OpenAICompatibleProvider:
         if usage:
             prompt = usage.get("prompt_tokens", 0)
             completion = usage.get("completion_tokens", 0)
+            details = usage.get("prompt_tokens_details") or {}
+            cached = details.get("cached_tokens", 0)
             self.total_prompt_tokens += prompt
             self.total_completion_tokens += completion
-            self._log_usage(prompt, completion)
+            self.total_cached_tokens += cached
+            self._log_usage(prompt, completion, cached)
 
     @staticmethod
     def _handle_error(resp: httpx.Response) -> None:
@@ -543,5 +548,6 @@ class OpenAICompatibleProvider:
         return {
             "prompt_tokens": self.total_prompt_tokens,
             "completion_tokens": self.total_completion_tokens,
+            "cached_tokens": self.total_cached_tokens,
             "total_tokens": self.total_prompt_tokens + self.total_completion_tokens,
         }

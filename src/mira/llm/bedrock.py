@@ -127,6 +127,7 @@ class BedrockProvider:
         self._client = session.client("bedrock-runtime")
         self.total_prompt_tokens = 0
         self.total_completion_tokens = 0
+        self.total_cached_tokens = 0
         logger.info(
             "Bedrock provider initialized: region=%s, model=%s",
             config.region,
@@ -200,6 +201,7 @@ class BedrockProvider:
         output_tokens = usage.get("outputTokens", 0)
         self.total_prompt_tokens += input_tokens
         self.total_completion_tokens += output_tokens
+        self.total_cached_tokens += usage.get("cacheReadInputTokens", 0)
         logger.info(
             "Bedrock response: model=%s, input_tokens=%d, output_tokens=%d, stop=%s",
             model,
@@ -426,5 +428,6 @@ class BedrockProvider:
         return {
             "prompt_tokens": self.total_prompt_tokens,
             "completion_tokens": self.total_completion_tokens,
+            "cached_tokens": self.total_cached_tokens,
             "total_tokens": self.total_prompt_tokens + self.total_completion_tokens,
         }
