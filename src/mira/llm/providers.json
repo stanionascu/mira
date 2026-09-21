@@ -19,6 +19,7 @@
     "extra_headers": {},
     "reasoning_field": "reasoning_effort",
     "reasoning_effort_map": { "low": "none", "medium": "none", "high": "high", "xhigh": "high", "max": "high" },
+    "reasoning_effort_passthrough": ["glm"],
     "cache_key_field": "prompt_cache_key"
   }
 }

@@ -28,12 +28,15 @@ _OVERRIDE_ENV = "MIRA_PROVIDERS_JSON_PATH"
 # no attribution headers, no reasoning remap. ``reasoning_field`` selects the
 # wire shape for extended thinking: nested ``reasoning`` object (default) or
 # root-level ``reasoning_effort`` string (Mistral).
+# ``reasoning_effort_passthrough`` lists model-name substrings whose effort
+# skips ``reasoning_effort_map`` (e.g. Mistral-hosted GLM honors "low").
 DEFAULT_PROFILE: dict = {
     "name": "",
     "model_prefix": "strip",
     "extra_headers": {},
     "reasoning_field": "reasoning",
     "reasoning_effort_map": {},
+    "reasoning_effort_passthrough": [],
     "api_key_env": None,
     "cache_key_field": None,
 }

@@ -287,14 +287,21 @@ class OpenAICompatibleProvider:
 
         Profiles may set ``reasoning_field: "reasoning_effort"`` (Mistral):
         the mapped effort is then sent as a root-level ``reasoning_effort``
-        string instead of the nested ``reasoning`` object.
+        string instead of the nested ``reasoning`` object. Models matching a
+        ``reasoning_effort_passthrough`` substring skip the remap entirely.
         """
         effort = self.config.reasoning_effort
         if not effort or effort == "off":
             return
-        if body.get("model") in self._no_reasoning:
+        model = body.get("model")
+        if model in self._no_reasoning:
             return
-        effort = self.profile.get("reasoning_effort_map", {}).get(effort, effort)
+        name = str(model or "").lower()
+        passthrough = any(
+            sub.lower() in name for sub in self.profile.get("reasoning_effort_passthrough", [])
+        )
+        if not passthrough:
+            effort = self.profile.get("reasoning_effort_map", {}).get(effort, effort)
         if self.profile.get("reasoning_field") == "reasoning_effort":
             body["reasoning_effort"] = effort
         else:

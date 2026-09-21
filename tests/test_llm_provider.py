@@ -766,6 +766,45 @@ class TestReasoningFallback:
         assert result == '{"comments": []}'
 
     @pytest.mark.asyncio
+    async def test_mistral_glm_passes_effort_through(self):
+        # Mistral-hosted GLM honors the raw effort; the low->none remap for
+        # native Mistral models must not apply.
+        for model in ("zai-glm-latest", "ZAI-GLM-47"):
+            provider = LLMProvider(
+                LLMConfig(
+                    model=model,
+                    reasoning_effort="low",
+                    base_url="https://api.mistral.ai/v1",
+                )
+            )
+            ok = _mock_httpx_response(_make_response_json("hello"))
+
+            with patch("mira.llm.provider.httpx.AsyncClient") as cls:
+                cls.return_value = self._client([ok])
+                await provider.complete([{"role": "user", "content": "hi"}])
+                posts = cls.return_value.post.call_args_list
+
+            assert posts[0].kwargs["json"]["reasoning_effort"] == "low"
+
+    @pytest.mark.asyncio
+    async def test_mistral_native_still_remaps_low_to_none(self):
+        provider = LLMProvider(
+            LLMConfig(
+                model="mistral/mistral-medium-3-5",
+                reasoning_effort="low",
+                base_url="https://api.mistral.ai/v1",
+            )
+        )
+        ok = _mock_httpx_response(_make_response_json("hello"))
+
+        with patch("mira.llm.provider.httpx.AsyncClient") as cls:
+            cls.return_value = self._client([ok])
+            await provider.complete([{"role": "user", "content": "hi"}])
+            posts = cls.return_value.post.call_args_list
+
+        assert posts[0].kwargs["json"]["reasoning_effort"] == "none"
+
+    @pytest.mark.asyncio
     async def test_remembered_model_skips_reasoning(self):
         provider = LLMProvider(LLMConfig(model="some/model", reasoning_effort="high"))
         provider._no_reasoning.add("some/model")
