@@ -19,6 +19,7 @@ from mira.llm.base import (
     _chat_content_text,
     _strip_model_prefix,
 )
+from mira.llm.utils import _ensure_json_hint
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,14 @@ class LLMProvider(OpenAICompatibleProvider):
         temperature: float | None = None,
         max_tokens: int | None = None,
     ) -> str:
-        """Make a single LLM call with retries against the /chat/completions endpoint."""
+        """Make a single LLM call with retries against the /chat/completions endpoint.
+
+        ``json_mode`` adds ``response_format`` AND guarantees the JSON-only
+        instruction lives in a user-role message: AxonHub moves system content
+        into Responses ``instructions`` and may route a Chat request to a
+        Responses-only upstream, which rejects ``json_object`` without an
+        explicit user-turn instruction.
+        """
         body: dict = {
             "model": _strip_model_prefix(model, self.config.base_url),
             "messages": messages,
@@ -53,6 +61,8 @@ class LLMProvider(OpenAICompatibleProvider):
         }
         if json_mode:
             body["response_format"] = {"type": "json_object"}
+            # Copied container — caller-owned ``messages`` stay untouched.
+            body["messages"] = _ensure_json_hint(messages)
         self._apply_reasoning(body)
         self._apply_cache_key(body)
 

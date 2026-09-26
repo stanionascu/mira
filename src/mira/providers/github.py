@@ -205,7 +205,7 @@ class GitHubProvider(BaseProvider):
         return await self._token_supplier()
 
     def _make_client(self, token: str):
-        return Github(token)
+        return Github(token, base_url=_GITHUB_API_URL)
 
     async def get_pr_info(self, pr_url: str) -> PRInfo:
         owner, repo, number = parse_pr_url(pr_url)

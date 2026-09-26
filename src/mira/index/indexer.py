@@ -82,10 +82,10 @@ _SKIP_PATTERNS = [
 ]
 
 _FILE_FETCH_SEMAPHORE = 10
-# Concurrent LLM summarization batches per repo. The indexing model
-# typically handles 6-8 comfortably on OpenRouter; bumping from 3 nearly
-# halves file-phase wall time without changing quality.
-_LLM_SEMAPHORE = 8
+# Concurrent LLM summarization batches per repo is configurable via
+# index.llm_concurrency (see config.IndexConfig). The default of 8 suits
+# OpenRouter-style endpoints; subscription/self-hosted endpoints with low
+# concurrency limits should lower it to avoid sustained 429 backoff loops.
 # Smaller batches → faster individual calls → better wave parallelism.
 # Empirically a 5-file batch with one large file bloated to 7k output
 # tokens and took 87s, dominating an entire indexing run. With 3-file
@@ -476,7 +476,7 @@ async def index_repo(
     # tasks and consume them as they complete; the inner semaphore bounds
     # actual parallelism. Cancellation still works between batch
     # completions.
-    llm_sem = asyncio.Semaphore(_LLM_SEMAPHORE)
+    llm_sem = asyncio.Semaphore(config.index.llm_concurrency)
     batches = _build_batches(file_pairs)
     tasks = [asyncio.create_task(_summarize_batch(batch, llm, llm_sem)) for batch in batches]
 
@@ -879,7 +879,7 @@ async def index_diff(
         file_pairs.append((path, content))
 
     # Summarize changed files
-    llm_sem = asyncio.Semaphore(_LLM_SEMAPHORE)
+    llm_sem = asyncio.Semaphore(config.index.llm_concurrency)
     indexed_count = 0
 
     if file_pairs:

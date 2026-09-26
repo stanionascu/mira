@@ -298,6 +298,11 @@ class ReviewConfig(BaseModel):
 
 
 class IndexConfig(BaseModel):
+    # Concurrent LLM summarization batches per repo during indexing. The
+    # default suits OpenRouter-style endpoints; subscription or self-hosted
+    # endpoints with low concurrency limits need a lower value to avoid
+    # sustained 429 backoff loops during full-index runs.
+    llm_concurrency: int = Field(default=8, ge=1, le=32)
     # Skip indexing any file larger than this (bytes). Generated SDKs, vendored
     # bundles and large test fixtures burn indexing tokens for little value.
     # Defaults to the previous hard-coded tarball cap (1 MB) so it's a no-op

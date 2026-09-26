@@ -12,6 +12,7 @@ import pytest
 from mira.config import LLMConfig
 from mira.exceptions import LLMError, NonRetriableLLMError
 from mira.llm.provider import LLMProvider
+from mira.llm.utils import _JSON_HINT
 
 # Set a dummy API key for tests so _get_api_key() doesn't fail
 os.environ.setdefault("OPENROUTER_API_KEY", "test-key-for-unit-tests")
@@ -149,6 +150,77 @@ class TestComplete:
             assert body["response_format"] == {"type": "json_object"}
 
     @pytest.mark.asyncio
+    async def test_json_mode_injects_hint_into_user_content(self):
+        config = LLMConfig(model="test-model")
+        provider = LLMProvider(config)
+
+        mock_resp = _mock_httpx_response(_make_response_json("{}"))
+
+        with patch("mira.llm.provider.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.post = AsyncMock(return_value=mock_resp)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            await provider.complete([{"role": "user", "content": "hi"}], json_mode=True)
+
+            call_kwargs = mock_client.post.call_args
+            body = call_kwargs.kwargs.get("json") or call_kwargs[1].get("json")
+            user = body["messages"][-1]
+            assert user["role"] == "user"
+            assert user["content"].startswith("hi")
+            assert _JSON_HINT in user["content"]
+
+    @pytest.mark.asyncio
+    async def test_json_mode_does_not_mutate_caller_messages(self):
+        config = LLMConfig(model="test-model")
+        provider = LLMProvider(config)
+
+        mock_resp = _mock_httpx_response(_make_response_json("{}"))
+        messages = [
+            {"role": "system", "content": "Respond in JSON."},
+            {"role": "user", "content": "hi"},
+        ]
+
+        with patch("mira.llm.provider.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.post = AsyncMock(return_value=mock_resp)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            await provider.complete(messages, json_mode=True)
+
+        assert messages == [
+            {"role": "system", "content": "Respond in JSON."},
+            {"role": "user", "content": "hi"},
+        ]
+
+    @pytest.mark.asyncio
+    async def test_json_mode_system_only_json_gets_separate_user_hint(self):
+        config = LLMConfig(model="test-model")
+        provider = LLMProvider(config)
+
+        mock_resp = _mock_httpx_response(_make_response_json("{}"))
+
+        with patch("mira.llm.provider.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.post = AsyncMock(return_value=mock_resp)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client_cls.return_value = mock_client
+
+            await provider.complete(
+                [{"role": "system", "content": "Respond in JSON."}], json_mode=True
+            )
+
+            call_kwargs = mock_client.post.call_args
+            body = call_kwargs.kwargs.get("json") or call_kwargs[1].get("json")
+            assert body["messages"][0] == {"role": "system", "content": "Respond in JSON."}
+            assert body["messages"][-1] == {"role": "user", "content": _JSON_HINT}
+
+    @pytest.mark.asyncio
     async def test_non_json_mode_no_response_format(self):
         config = LLMConfig(model="test-model")
         provider = LLMProvider(config)
@@ -167,6 +239,7 @@ class TestComplete:
             call_kwargs = mock_client.post.call_args
             body = call_kwargs.kwargs.get("json") or call_kwargs[1].get("json")
             assert "response_format" not in body
+            assert body["messages"] == [{"role": "user", "content": "hi"}]
 
     @pytest.mark.asyncio
     async def test_reasoning_effort_sets_reasoning_and_drops_temperature(self):

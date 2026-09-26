@@ -494,7 +494,7 @@ async def dispatch_github_event(
             owner = payload.get("repository", {}).get("owner", {}).get("login", "?")
             repo = payload.get("repository", {}).get("name", "?")
             number = payload.get("pull_request", {}).get("number", 0)
-            logger.debug(
+            logger.info(
                 "PR %s/%s#%s skipped — author %s filtered by author filter",
                 owner,
                 repo,
@@ -529,7 +529,7 @@ async def dispatch_github_event(
             elif author_is_filtered(
                 comment_user, cfg.filter.allowed_authors, cfg.filter.blocked_authors
             ):
-                logger.debug(
+                logger.info(
                     "issue_comment skipped — author %s filtered by author filter",
                     comment_user,
                 )
@@ -573,7 +573,7 @@ async def dispatch_github_event(
         if ref == f"refs/heads/{default_branch}":
             sender = payload.get("sender", {}).get("login", "")
             if author_is_filtered(sender, cfg.filter.allowed_authors, cfg.filter.blocked_authors):
-                logger.debug("push to %s skipped — author %s filtered", ref, sender)
+                logger.info("push to %s skipped — author %s filtered", ref, sender)
                 return "ignored"
             background_tasks.add_task(handle_push_index, payload, app_auth, bot_name)
             return "processing"

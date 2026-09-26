@@ -13,6 +13,17 @@ from mira.llm.codex_cli import CodexCLIProvider
 
 
 class TestCodexCLIProvider:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("method", ["review", "walkthrough"])
+    async def test_schema_import_entrypoints(self, method):
+        provider = CodexCLIProvider(LLMConfig(provider="codex-cli"))
+        provider.complete_with_tools = AsyncMock(return_value="{}")
+
+        assert await getattr(provider, method)([{"role": "user", "content": "test"}]) == "{}"
+
+        provider.complete_with_tools.assert_awaited_once()
+        assert provider.complete_with_tools.call_args.kwargs["tools"][0]["type"] == "function"
+
     def test_factory_selects_codex_cli_provider(self):
         provider = create_llm(LLMConfig(provider="codex-cli", model="gpt-5-codex"))
         assert isinstance(provider, CodexCLIProvider)

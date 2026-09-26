@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import base64
+import importlib
+import os
 import time
+from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -13,6 +16,7 @@ from github import GithubException
 from mira.core.diff_parser import parse_diff
 from mira.exceptions import ProviderError
 from mira.models import FileChangeType, PRInfo, ReviewComment, ReviewResult, Severity
+from mira.providers import github as gh_provider
 from mira.providers.github import (
     _CATEGORY_DISPLAY,
     GitHubProvider,
@@ -1576,7 +1580,7 @@ class TestTokenRefresh:
         calls = []
         with patch(
             "mira.providers.github.Github",
-            side_effect=lambda t: (calls.append(t), MagicMock())[1],
+            side_effect=lambda t, **_kw: (calls.append(t), MagicMock())[1],
         ) as gh_cls:
             gh_cls.return_value.get_repo.return_value = mock_repo
             await provider.get_pr_info("https://github.com/o/r/pull/1")
@@ -1652,3 +1656,41 @@ class TestTokenRefresh:
         provider = GitHubProvider("static-tok")
         assert await provider._resolve_token() == "static-tok"
         assert await provider._resolve_token() == "static-tok"
+
+
+class TestEnterpriseAPIURL:
+    _ENTERPRISE = "https://github.example.test/api/v3"
+
+    @staticmethod
+    @contextmanager
+    def _reloaded(url: str | None):
+        previous = os.environ.get("MIRA_GITHUB_API_URL")
+        if url is None:
+            os.environ.pop("MIRA_GITHUB_API_URL", None)
+        else:
+            os.environ["MIRA_GITHUB_API_URL"] = url
+        try:
+            yield importlib.reload(gh_provider)
+        finally:
+            if previous is None:
+                os.environ.pop("MIRA_GITHUB_API_URL", None)
+            else:
+                os.environ["MIRA_GITHUB_API_URL"] = previous
+            importlib.reload(gh_provider)
+
+    def test_client_uses_configured_enterprise_url(self):
+        with self._reloaded(self._ENTERPRISE) as mod:
+            gh = mod.GitHubProvider("tok")._make_client("tok")
+            assert gh.requester.base_url == self._ENTERPRISE
+
+    def test_trailing_slash_is_stripped(self):
+        with self._reloaded(f"{self._ENTERPRISE}/") as mod:
+            assert mod._GITHUB_API_URL == self._ENTERPRISE
+            gh = mod.GitHubProvider("tok")._make_client("tok")
+            assert gh.requester.base_url == self._ENTERPRISE
+
+    def test_defaults_to_public_github(self):
+        with self._reloaded(None) as mod:
+            assert mod._GITHUB_API_URL == "https://api.github.com"
+            gh = mod.GitHubProvider("tok")._make_client("tok")
+            assert gh.requester.base_url == "https://api.github.com"
