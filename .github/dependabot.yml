@@ -41,3 +41,13 @@ updates:
       - dependencies
       - ui
     open-pull-requests-limit: 10
+    # React 19 crashes at startup (error #527) unless `react` and
+    # `react-dom` resolve to the exact same version, so they must always
+    # be bumped together in a single PR.
+    groups:
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
