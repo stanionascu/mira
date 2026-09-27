@@ -22,7 +22,7 @@ def _make_pr_payload() -> dict[str, Any]:
     return {
         "installation": {"id": 1},
         "action": "opened",
-        "pull_request": {"number": 42},
+        "pull_request": {"number": 42, "title": "Add widget"},
         "repository": {
             "owner": {"login": "testowner"},
             "name": "testrepo",
@@ -165,6 +165,7 @@ async def test_completed_review_fires_review_completed(
     data = _data_for(mock_dispatch, "review.completed")
     assert data["repo"] == "testowner/testrepo"
     assert data["pr_url"] == "https://github.com/testowner/testrepo/pull/42"
+    assert data["title"] == "Add widget"
     assert data["comments"] == 1
     assert data["key_issues"] == 0
 
@@ -219,6 +220,7 @@ async def test_failed_review_fires_review_failed(
     data = _data_for(mock_dispatch, "review.failed")
     assert data["repo"] == "testowner/testrepo"
     assert data["number"] == 42
+    assert data["title"] == "Add widget"
     assert "boom" in data["error"]
 
 

@@ -121,6 +121,7 @@ class TestRender:
         body = nf.render(nf.REVIEW_COMPLETED, nf.sample_data(nf.REVIEW_COMPLETED), "slack")
         assert "text" in body and "blocks" in body
         assert body["blocks"][0]["text"]["type"] == "mrkdwn"
+        assert '"Add widget"' in body["blocks"][0]["text"]["text"]
 
     def test_teams_payload_shape(self):
         body = nf.render(nf.REVIEW_HIGH_SEVERITY, nf.sample_data(nf.REVIEW_COMPLETED), "teams")
