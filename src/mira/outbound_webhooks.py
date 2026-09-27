@@ -134,13 +134,15 @@ def _message(event: str, data: dict[str, Any]) -> tuple[str, str, str]:
     pr_url = data.get("pr_url", "")
     number = data.get("number")
     pr_ref = f"{repo} #{number}" if number is not None else repo
+    pr_title = data.get("title", "") or ""
+    title_line = f'\n"{pr_title}"' if pr_title else ""
 
     if event == REVIEW_COMPLETED:
         comments = data.get("comments", 0)
         issues = data.get("key_issues", 0)
         title = f"✅ Mira reviewed {pr_ref}"
         body = f"*<{pr_url}|{pr_ref}>* — {comments} comment(s), {issues} key issue(s)"
-        return title, body, "2EB67D"
+        return title, body + title_line, "2EB67D"
 
     if event == REVIEW_HIGH_SEVERITY:
         issues = data.get("key_issues", 0)
@@ -148,13 +150,13 @@ def _message(event: str, data: dict[str, Any]) -> tuple[str, str, str]:
         breakdown = ", ".join(f"{n} {name}" for name, n in sev.items()) or f"{issues} issue(s)"
         title = f"🛑 Mira found high-severity issues in {pr_ref}"
         body = f"*<{pr_url}|{pr_ref}>* — {breakdown}"
-        return title, body, "E01E5A"
+        return title, body + title_line, "E01E5A"
 
     if event == REVIEW_FAILED:
         err = data.get("error", "unknown error")
         title = f"❌ Mira review failed for {pr_ref}"
         body = f"*<{pr_url}|{pr_ref}>* — review failed: {err}"
-        return title, body, "E01E5A"
+        return title, body + title_line, "E01E5A"
 
     if event == INDEXING_COMPLETED:
         files = data.get("files_indexed", 0)
@@ -361,6 +363,7 @@ def sample_data(event: str) -> dict[str, Any]:
             "repo": "octocat/hello-world",
             "pr_url": "https://github.com/octocat/hello-world/pull/42",
             "number": 42,
+            "title": "Add widget",
             "error": "example error (test delivery)",
         }
     return {
