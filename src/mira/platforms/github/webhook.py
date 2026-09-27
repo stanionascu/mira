@@ -590,6 +590,7 @@ async def handle_pull_request(
     installation_id: int = payload.get("installation", {}).get("id", 0)
     pr_url = ""
     repo_full = ""
+    entered_review = False
     try:
         pr = payload["pull_request"]
         owner = payload["repository"]["owner"]["login"]
@@ -607,6 +608,9 @@ async def handle_pull_request(
         # the review itself fails. Idempotent on every synchronize re-fire.
         _record_pr_contribution(payload, "pr_opened")
 
+        # run_pr_review dispatches review.failed itself when the review raises;
+        # only failures before this point still need a dispatch here.
+        entered_review = True
         await run_pr_review(
             provider,
             owner,
@@ -619,7 +623,7 @@ async def handle_pull_request(
         )
     except Exception as exc:
         logger.exception("Error handling pull_request event")
-        if pr_url:
+        if pr_url and not entered_review:
             from mira.outbound_webhooks import REVIEW_FAILED, dispatch_event
 
             await dispatch_event(
