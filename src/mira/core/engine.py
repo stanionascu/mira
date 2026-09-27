@@ -463,6 +463,19 @@ class ReviewEngine:
             f"**Message:** {message}"
         )
 
+    @classmethod
+    def _bare_failure_body(cls, exc: BaseException) -> str:
+        """Standalone failure comment for when no walkthrough content exists yet."""
+        return (
+            f"{WALKTHROUGH_MARKER}\n"
+            "## Mira PR Walkthrough\n\n"
+            "---\n\n"
+            "<details>\n"
+            "<summary><b>❌ Review failed</b> — click for details</summary>\n\n"
+            f"{cls._format_failure_notice(exc)}\n\n"
+            "</details>\n"
+        )
+
     async def _detect_overlaps_safe(
         self,
         pr_info: PRInfo,
@@ -585,10 +598,18 @@ class ReviewEngine:
                 logger.warning("Thread resolution failed, continuing: %s", exc)
                 return 0, 0, [], []
 
-        thread_result, diff_text = await _asyncio.gather(
-            _resolve_threads(),
-            self.provider.get_pr_diff(pr_info),
-        )
+        try:
+            thread_result, diff_text = await _asyncio.gather(
+                _resolve_threads(),
+                self.provider.get_pr_diff(pr_info),
+            )
+        except BaseException as exc:
+            # The diff fetch failed before any placeholder existed — post a
+            # failure notice directly so the PR doesn't stay silent.
+            if not self.dry_run:
+                with contextlib.suppress(Exception):
+                    await self.provider.post_comment(pr_info, self._bare_failure_body(exc))
+            raise
 
         threads_checked, llm_resolved, unresolved_threads, thread_decisions = thread_result
 
@@ -750,11 +771,13 @@ class ReviewEngine:
                     await notify_task
                 self._walkthrough_notify_task = None
 
-            # Update placeholder so the user knows the review failed.
+            # Update the placeholder so the user knows the review failed.
             # If the walkthrough already landed, re-render it without the
             # in-progress banner and append the failure notice — preserves
             # walkthrough content while removing the stuck "in progress" state.
-            if placeholder_id is not None:
+            # When no placeholder exists (its post failed), fall back to a
+            # fresh comment so the failure never goes silent.
+            if not self.dry_run:
                 try:
                     wt = _walkthrough_result[0]
                     if wt is not None:
@@ -764,19 +787,14 @@ class ReviewEngine:
                             failure_notice=self._format_failure_notice(exc),
                         )
                     else:
-                        failure_body = (
-                            f"{WALKTHROUGH_MARKER}\n"
-                            "## Mira PR Walkthrough\n\n"
-                            "---\n\n"
-                            "<details>\n"
-                            "<summary><b>❌ Review failed</b> — click for details</summary>\n\n"
-                            f"{self._format_failure_notice(exc)}\n\n"
-                            "</details>\n"
-                        )
-                    await self.provider.update_comment(pr_info, placeholder_id, failure_body)
+                        failure_body = self._bare_failure_body(exc)
+                    if placeholder_id is not None:
+                        await self.provider.update_comment(pr_info, placeholder_id, failure_body)
+                    else:
+                        await self.provider.post_comment(pr_info, failure_body)
                 except Exception as comment_exc:
                     logger.warning(
-                        "Failed to update placeholder on review failure: %s", comment_exc
+                        "Failed to post failure notice on review failure: %s", comment_exc
                     )
 
             raise
