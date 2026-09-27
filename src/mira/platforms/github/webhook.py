@@ -590,12 +590,15 @@ async def handle_pull_request(
     installation_id: int = payload.get("installation", {}).get("id", 0)
     pr_url = ""
     repo_full = ""
+    number = 0
+    pr_title = ""
     entered_review = False
     try:
         pr = payload["pull_request"]
         owner = payload["repository"]["owner"]["login"]
         repo = payload["repository"]["name"]
         number = pr["number"]
+        pr_title = pr.get("title", "") or ""
         pr_url = f"https://github.com/{owner}/{repo}/pull/{number}"
         repo_full = f"{owner}/{repo}"
 
@@ -619,7 +622,7 @@ async def handle_pull_request(
             pr_url,
             is_private,
             bot_name,
-            pr_title=pr.get("title", ""),
+            pr_title=pr_title,
         )
     except Exception as exc:
         logger.exception("Error handling pull_request event")
@@ -628,7 +631,13 @@ async def handle_pull_request(
 
             await dispatch_event(
                 REVIEW_FAILED,
-                {"repo": repo_full, "pr_url": pr_url, "error": str(exc)},
+                {
+                    "repo": repo_full,
+                    "pr_url": pr_url,
+                    "number": number,
+                    "title": pr_title,
+                    "error": str(exc),
+                },
             )
 
 
