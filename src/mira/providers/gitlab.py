@@ -268,8 +268,8 @@ class GitLabProvider(BaseProvider):
     async def post_review(
         self, pr_info: PRInfo, result: ReviewResult, bot_name: str = "miracodeai"
     ) -> None:
-        if not result.comments:
-            return
+        # No early return on empty comments: a clean review still posts the
+        # summary note below so the MR shows a posted review.
         try:
             data = await self._changes(pr_info)
         except Exception as e:
@@ -318,6 +318,8 @@ class GitLabProvider(BaseProvider):
             review_body = f"**Mira Review Summary**\n\n{result.summary}"
         if result.key_issues:
             review_body += format_key_issues(result.key_issues)
+        if not result.comments and not review_body:
+            review_body = "No issues found."
         if review_body:
             try:
                 await self.post_comment(pr_info, review_body)

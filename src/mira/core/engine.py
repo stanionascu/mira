@@ -932,19 +932,20 @@ class ReviewEngine:
         )
 
         posted_comment_ids: list[int] = []
-        if result.comments:
-            if self.dry_run:
-                logger.info(
-                    "Dry run: would post %d comment(s) on PR %s",
-                    len(result.comments),
-                    pr_info.url,
-                )
-            else:
-                posted_comment_ids = (
-                    await self.provider.post_review(pr_info, result, bot_name=self.bot_name) or []
-                )
+        if self.dry_run:
+            logger.info(
+                "Dry run: would post %d comment(s) on PR %s",
+                len(result.comments),
+                pr_info.url,
+            )
         else:
-            logger.info("No code suggestions for PR %s", pr_info.url)
+            if not result.comments:
+                logger.info("No code suggestions for PR %s", pr_info.url)
+            # Always post — with no findings the provider submits a
+            # summary-only review so the PR still shows a posted review.
+            posted_comment_ids = (
+                await self.provider.post_review(pr_info, result, bot_name=self.bot_name) or []
+            )
 
         result.thread_decisions = thread_decisions
 

@@ -271,14 +271,15 @@ class ForgejoProvider(BaseProvider):
     async def post_review(
         self, pr_info: PRInfo, result: ReviewResult, bot_name: str = "miracodeai"
     ) -> None:
-        if not result.comments:
-            return
-
+        # No early return on empty comments: a clean review still submits the
+        # review below so the PR shows a posted review.
         summary_text = ""
         if result.summary:
             summary_text = f"**Mira Review Summary**\n\n{result.summary}"
         if result.key_issues:
             summary_text += format_key_issues(result.key_issues)
+        if not result.comments and not summary_text:
+            summary_text = "No issues found."
 
         review_body = {
             "event": "COMMENT",

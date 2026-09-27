@@ -437,8 +437,8 @@ class GitHubProvider(BaseProvider):
         result: ReviewResult,
         bot_name: str = "miracodeai",
     ) -> list[int]:
-        if not result.comments:
-            return []
+        # No early return on empty comments: a clean review still submits a
+        # summary-only review so the PR shows a posted review.
 
         # The line GitHub anchors a comment to (the end line for multi-line).
         def _anchor(c: ReviewComment) -> int:
@@ -464,6 +464,8 @@ class GitHubProvider(BaseProvider):
             review_body = f"**Mira Review Summary**\n\n{result.summary}"
         if result.key_issues:
             review_body += _format_key_issues(result.key_issues)
+        if not result.comments and not review_body:
+            review_body = "No issues found."
 
         token = await self._resolve_token()
         gh = self._make_client(token)
