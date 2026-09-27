@@ -75,7 +75,9 @@ def _help_message(bot_name: str) -> str:
     )
 
 
-async def _dispatch_completed(result: Any, repo_full: str, pr_url: str, number: int) -> None:
+async def _dispatch_completed(
+    result: Any, repo_full: str, pr_url: str, number: int, pr_title: str = ""
+) -> None:
     """Fire ``review.completed`` (+ ``review.high_severity`` when warranted).
 
     Shared by auto-reviews and ``review`` / ``review-rest`` commands so every
@@ -93,6 +95,7 @@ async def _dispatch_completed(result: Any, repo_full: str, pr_url: str, number: 
         "repo": repo_full,
         "pr_url": pr_url,
         "number": number,
+        "title": pr_title,
         "comments": len(result.comments),
         "key_issues": len(result.key_issues),
         "severities": {sev.name.lower(): n for sev, n in stats.items()},
@@ -102,7 +105,9 @@ async def _dispatch_completed(result: Any, repo_full: str, pr_url: str, number: 
         await dispatch_event(REVIEW_HIGH_SEVERITY, event_data)
 
 
-async def _dispatch_failed(repo_full: str, pr_url: str, number: int, exc: BaseException) -> None:
+async def _dispatch_failed(
+    repo_full: str, pr_url: str, number: int, exc: BaseException, pr_title: str = ""
+) -> None:
     """Fire ``review.failed`` for a review that raised instead of completing.
 
     Never raises — ``dispatch_event`` is guarded end-to-end — so it is safe to
@@ -112,7 +117,13 @@ async def _dispatch_failed(repo_full: str, pr_url: str, number: int, exc: BaseEx
 
     await dispatch_event(
         REVIEW_FAILED,
-        {"repo": repo_full, "pr_url": pr_url, "number": number, "error": str(exc)},
+        {
+            "repo": repo_full,
+            "pr_url": pr_url,
+            "number": number,
+            "title": pr_title,
+            "error": str(exc),
+        },
     )
 
 
@@ -174,7 +185,7 @@ async def run_pr_review(
         review_tracker.complete(repo_full, number)
     except Exception as exc:
         review_tracker.fail(repo_full, number, str(exc))
-        await _dispatch_failed(repo_full, pr_url, number, exc)
+        await _dispatch_failed(repo_full, pr_url, number, exc, pr_title)
         raise
 
     # The walkthrough comment already carries the "more accurate after indexing"
@@ -182,7 +193,7 @@ async def run_pr_review(
     # would repeat on every push.
 
     logger.info("Review complete for %s", pr_url)
-    await _dispatch_completed(result, repo_full, pr_url, number)
+    await _dispatch_completed(result, repo_full, pr_url, number, pr_title)
 
 
 async def run_pr_command(
@@ -253,9 +264,9 @@ async def run_pr_command(
             review_tracker.complete(repo_full, number)
         except Exception as exc:
             review_tracker.fail(repo_full, number, str(exc))
-            await _dispatch_failed(repo_full, pr_url, number, exc)
+            await _dispatch_failed(repo_full, pr_url, number, exc, pr_title)
             raise
-        await _dispatch_completed(result, repo_full, pr_url, number)
+        await _dispatch_completed(result, repo_full, pr_url, number, pr_title)
     elif is_review:
         engine = ReviewEngine(
             config=config,
@@ -274,9 +285,9 @@ async def run_pr_command(
             review_tracker.complete(repo_full, number)
         except Exception as exc:
             review_tracker.fail(repo_full, number, str(exc))
-            await _dispatch_failed(repo_full, pr_url, number, exc)
+            await _dispatch_failed(repo_full, pr_url, number, exc, pr_title)
             raise
-        await _dispatch_completed(result, repo_full, pr_url, number)
+        await _dispatch_completed(result, repo_full, pr_url, number, pr_title)
     else:
         pr_info = await provider.get_pr_info(pr_url)
         diff_text = await provider.get_pr_diff(pr_info)
