@@ -190,7 +190,9 @@ class TestReviewEngine:
         assert "prompt_cache_key" not in indexing_llm.__dict__
 
     @pytest.mark.asyncio
-    async def test_no_post_when_no_comments(self, mock_provider: AsyncMock):
+    async def test_posts_summary_when_no_comments(self, mock_provider: AsyncMock):
+        """A clean review still submits a summary-only review — the PR must
+        show a posted review, not just a walkthrough comment."""
         llm = MagicMock(spec=LLMProvider)
         no_comments = json.dumps(
             {
@@ -208,7 +210,7 @@ class TestReviewEngine:
         engine = ReviewEngine(config=MiraConfig(), llm=llm, provider=mock_provider)
         await engine.review_pr("https://github.com/test/repo/pull/1")
 
-        mock_provider.post_review.assert_not_called()
+        mock_provider.post_review.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_empty_diff(self, mock_llm: LLMProvider):
@@ -843,6 +845,40 @@ class TestReviewEngine:
         assert "Code review" in body
         assert "ValueError" in body
 
+        # Phase 2: when no placeholder exists (its post never landed), the
+        # failure notice falls back to a fresh comment instead of going silent.
+        mock_provider.reset_mock()
+        mock_provider.get_pr_info.return_value = pr_info
+        mock_provider.get_pr_diff.return_value = sample_diff_text
+        mock_provider.find_bot_comment = AsyncMock(return_value=None)
+
+        engine._review_diff_internal = AsyncMock(side_effect=ValueError("LLM broke"))
+
+        with pytest.raises(ValueError, match="LLM broke"):
+            await engine.review_pr("https://github.com/test/repo/pull/1")
+
+        mock_provider.update_comment.assert_not_called()
+        assert mock_provider.post_comment.await_count == 2  # placeholder + fallback
+        fallback_body = mock_provider.post_comment.call_args_list[1][0][1]
+        assert WALKTHROUGH_MARKER in fallback_body
+        assert "Review failed" in fallback_body
+        assert "ValueError" in fallback_body
+
+        # Phase 3: a diff-fetch failure (before any placeholder exists) still
+        # posts a failure notice when PR context is available.
+        mock_provider.reset_mock()
+        mock_provider.get_pr_info.return_value = pr_info
+        mock_provider.get_pr_diff = AsyncMock(side_effect=RuntimeError("diff down"))
+
+        with pytest.raises(RuntimeError, match="diff down"):
+            await engine.review_pr("https://github.com/test/repo/pull/1")
+
+        mock_provider.post_comment.assert_awaited_once()
+        early_body = mock_provider.post_comment.call_args[0][1]
+        assert WALKTHROUGH_MARKER in early_body
+        assert "Review failed" in early_body
+        assert "RuntimeError" in early_body
+
     @pytest.mark.asyncio
     async def test_review_failure_re_renders_walkthrough_without_in_progress(
         self,
@@ -1299,6 +1335,7 @@ class TestRoundDetectionWiring:
         mock_provider.post_comment = AsyncMock()
         mock_provider.update_comment = AsyncMock()
         mock_provider.resolve_outdated_review_threads = AsyncMock(return_value=0)
+        mock_provider.post_review = AsyncMock(return_value=[])
 
         captured: dict = {}
 
@@ -1359,6 +1396,7 @@ class TestRoundDetectionWiring:
         mock_provider.post_comment = AsyncMock()
         mock_provider.update_comment = AsyncMock()
         mock_provider.resolve_outdated_review_threads = AsyncMock(return_value=0)
+        mock_provider.post_review = AsyncMock(return_value=[])
 
         captured: dict = {}
 
@@ -1409,6 +1447,7 @@ class TestRoundDetectionWiring:
         mock_provider.post_comment = AsyncMock()
         mock_provider.update_comment = AsyncMock()
         mock_provider.resolve_outdated_review_threads = AsyncMock(return_value=0)
+        mock_provider.post_review = AsyncMock(return_value=[])
 
         captured: dict = {}
 
@@ -1466,6 +1505,7 @@ class TestIncrementalDiff:
         mock_provider.post_comment = AsyncMock()
         mock_provider.update_comment = AsyncMock()
         mock_provider.resolve_outdated_review_threads = AsyncMock(return_value=0)
+        mock_provider.post_review = AsyncMock(return_value=[])
         return mock_provider
 
     @pytest.mark.asyncio
@@ -2353,6 +2393,7 @@ class TestAgenticToolsOnIndexedRepos:
         mock_provider.post_comment = AsyncMock()
         mock_provider.update_comment = AsyncMock()
         mock_provider.resolve_outdated_review_threads = AsyncMock(return_value=0)
+        mock_provider.post_review = AsyncMock(return_value=[])
         return mock_provider
 
     @pytest.mark.asyncio

@@ -212,9 +212,13 @@ async def test_failed_review_fires_review_failed(
     events = _events(mock_dispatch)
     assert "review.failed" in events
     assert "review.completed" not in events
+    # The shared layer owns the failure dispatch; the platform layer must not
+    # fire it a second time for the same failure.
+    assert mock_dispatch.await_count == 1
 
     data = _data_for(mock_dispatch, "review.failed")
     assert data["repo"] == "testowner/testrepo"
+    assert data["number"] == 42
     assert "boom" in data["error"]
 
 
@@ -229,16 +233,19 @@ async def test_handle_comment_review_keyword(
     mock_engine_cls: MagicMock,
     mock_app_auth: AsyncMock,
 ) -> None:
-    """'review' keyword triggers full review_pr."""
+    """'review' keyword triggers full review_pr and fires review.completed."""
     mock_config.return_value = MagicMock()
     mock_engine = AsyncMock()
     mock_engine.review_pr = AsyncMock(return_value=ReviewResult(summary="ok"))
     mock_engine_cls.return_value = mock_engine
 
     payload = _make_comment_payload("@mira-bot review")
-    await handle_comment(payload, mock_app_auth, "mira-bot")
+    with patch("mira.outbound_webhooks.dispatch_event", new_callable=AsyncMock) as mock_dispatch:
+        await handle_comment(payload, mock_app_auth, "mira-bot")
 
     mock_engine.review_pr.assert_awaited_once()
+    # A command-triggered review notifies like an auto-review.
+    assert _events(mock_dispatch) == ["review.completed"]
 
 
 @patch("mira.platforms.github.webhook.create_provider")

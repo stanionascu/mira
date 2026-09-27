@@ -184,6 +184,17 @@ class TestPostReview:
         assert data["position[base_sha]"] == "b"
         assert data["position[new_path]"] == "a.py"
 
+        # Phase 2: an empty result still posts the summary note instead of
+        # silently skipping the post.
+        calls.clear()
+        empty = ReviewResult(comments=[], summary="No issues found.", key_issues=[])
+        with _patch(handler):
+            await GitLabProvider("tok").post_review(_PR, empty)
+
+        assert not any(c[1].endswith("/discussions") for c in calls)
+        notes = [c for c in calls if c[1].endswith("/notes")]
+        assert any("Mira Review Summary" in (c[2] or {}).get("body", "") for c in notes)
+
     @pytest.mark.asyncio
     async def test_falls_back_to_note_on_400(self):
         calls = []

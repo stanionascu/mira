@@ -342,6 +342,17 @@ class TestPostReviewGracefulDegradation:
         assert final.get("comments") == []
         assert "Mira Review Summary" in final.get("body", "")
 
+        # Phase 2: an empty result still submits a summary-only review
+        # instead of silently skipping the post.
+        empty = ReviewResult(comments=[], summary="No issues found.")
+        with patch("mira.providers.github.Github", return_value=mock_gh):
+            ids = await provider.post_review(pr_info, empty)
+
+        assert ids == []
+        assert len(review_calls) == 3
+        assert review_calls[-1].get("comments") == []
+        assert "Mira Review Summary" in review_calls[-1].get("body", "")
+
     @pytest.mark.asyncio
     async def test_partial_individual_success(self):
         """One bad line, one good line — the good one still posts."""
