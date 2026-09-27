@@ -75,6 +75,47 @@ def _help_message(bot_name: str) -> str:
     )
 
 
+async def _dispatch_completed(result: Any, repo_full: str, pr_url: str, number: int) -> None:
+    """Fire ``review.completed`` (+ ``review.high_severity`` when warranted).
+
+    Shared by auto-reviews and ``review`` / ``review-rest`` commands so every
+    finished review notifies the same way.
+    """
+    from mira.models import Severity, build_review_stats
+    from mira.outbound_webhooks import (
+        REVIEW_COMPLETED,
+        REVIEW_HIGH_SEVERITY,
+        dispatch_event,
+    )
+
+    stats = build_review_stats(result.comments)
+    event_data = {
+        "repo": repo_full,
+        "pr_url": pr_url,
+        "number": number,
+        "comments": len(result.comments),
+        "key_issues": len(result.key_issues),
+        "severities": {sev.name.lower(): n for sev, n in stats.items()},
+    }
+    await dispatch_event(REVIEW_COMPLETED, event_data)
+    if any(sev >= Severity.WARNING for sev in stats):
+        await dispatch_event(REVIEW_HIGH_SEVERITY, event_data)
+
+
+async def _dispatch_failed(repo_full: str, pr_url: str, number: int, exc: BaseException) -> None:
+    """Fire ``review.failed`` for a review that raised instead of completing.
+
+    Never raises — ``dispatch_event`` is guarded end-to-end — so it is safe to
+    await from an ``except`` block before re-raising.
+    """
+    from mira.outbound_webhooks import REVIEW_FAILED, dispatch_event
+
+    await dispatch_event(
+        REVIEW_FAILED,
+        {"repo": repo_full, "pr_url": pr_url, "number": number, "error": str(exc)},
+    )
+
+
 async def run_pr_review(
     provider: Any,
     owner: str,
@@ -133,6 +174,7 @@ async def run_pr_review(
         review_tracker.complete(repo_full, number)
     except Exception as exc:
         review_tracker.fail(repo_full, number, str(exc))
+        await _dispatch_failed(repo_full, pr_url, number, exc)
         raise
 
     # The walkthrough comment already carries the "more accurate after indexing"
@@ -140,26 +182,7 @@ async def run_pr_review(
     # would repeat on every push.
 
     logger.info("Review complete for %s", pr_url)
-
-    from mira.models import Severity, build_review_stats
-    from mira.outbound_webhooks import (
-        REVIEW_COMPLETED,
-        REVIEW_HIGH_SEVERITY,
-        dispatch_event,
-    )
-
-    stats = build_review_stats(result.comments)
-    event_data = {
-        "repo": repo_full,
-        "pr_url": pr_url,
-        "number": number,
-        "comments": len(result.comments),
-        "key_issues": len(result.key_issues),
-        "severities": {sev.name.lower(): n for sev, n in stats.items()},
-    }
-    await dispatch_event(REVIEW_COMPLETED, event_data)
-    if any(sev >= Severity.WARNING for sev in stats):
-        await dispatch_event(REVIEW_HIGH_SEVERITY, event_data)
+    await _dispatch_completed(result, repo_full, pr_url, number)
 
 
 async def run_pr_command(
@@ -226,11 +249,13 @@ async def run_pr_command(
             "review-rest on %s by @%s — %d file(s)", pr_url, actor, len(progress.skipped_paths)
         )
         try:
-            await engine.review_pr(pr_url)
+            result = await engine.review_pr(pr_url)
             review_tracker.complete(repo_full, number)
         except Exception as exc:
             review_tracker.fail(repo_full, number, str(exc))
+            await _dispatch_failed(repo_full, pr_url, number, exc)
             raise
+        await _dispatch_completed(result, repo_full, pr_url, number)
     elif is_review:
         engine = ReviewEngine(
             config=config,
@@ -245,11 +270,13 @@ async def run_pr_command(
             return
         logger.info("Re-review triggered for %s by @%s", pr_url, actor)
         try:
-            await engine.review_pr(pr_url)
+            result = await engine.review_pr(pr_url)
             review_tracker.complete(repo_full, number)
         except Exception as exc:
             review_tracker.fail(repo_full, number, str(exc))
+            await _dispatch_failed(repo_full, pr_url, number, exc)
             raise
+        await _dispatch_completed(result, repo_full, pr_url, number)
     else:
         pr_info = await provider.get_pr_info(pr_url)
         diff_text = await provider.get_pr_diff(pr_info)
